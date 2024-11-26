@@ -89,7 +89,7 @@ def pca_rotate(X):
     X_rotated = X @ Vh.T
 
     # Compute PCA eigenvalues
-    eigenvalues = S ** 2
+    eigenvalues = S ** 2 / X.shape[0]
 
     # Convert back to numpy if the input was numpy
     if is_numpy:
