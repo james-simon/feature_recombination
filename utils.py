@@ -25,6 +25,9 @@ def rms(x):
     else:
         raise TypeError("Input must be a numpy array or a torch tensor.")
 
+def cos_sim(v1, v2):
+  return np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
+
 def hermite(k, x):
     """Compute the k-th probabilist's Hermite polynomial at x, normalized to have unit norm against the standard normal distribution."""
 

@@ -142,7 +142,7 @@ def kernel_eigenvector_weights(K, Y, min_eigenval_threshold=1e-8):
     n, _ = K.shape
     n_Ys = Y.shape[1]
 
-    eigenvals, eigenvecs = np.linalg.eigh(K / n)
+    eigenvals, eigenvecs = torch.linalg.eigh(K / n)
 
     mode_weights = (eigenvecs.T @ Y) ** 2
 
@@ -154,8 +154,8 @@ def kernel_eigenvector_weights(K, Y, min_eigenval_threshold=1e-8):
     for i in range(n_Ys):
         filtered_weights = mode_weights[valid_indices][:,i]
 
-        log_geom_mean_eigenval = (np.log(filtered_eigenvals) * filtered_weights).sum() / filtered_weights.sum()
-        geom_mean_eigenval = np.exp(log_geom_mean_eigenval)
+        log_geom_mean_eigenval = (torch.log(filtered_eigenvals) * filtered_weights).sum() / filtered_weights.sum()
+        geom_mean_eigenval = torch.exp(log_geom_mean_eigenval).item()
         geom_mean_eigenvals.append(geom_mean_eigenval)
 
     eigenvals = ensure_numpy(eigenvals)
