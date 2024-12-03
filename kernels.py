@@ -100,6 +100,26 @@ def krr(K, y, n_train, ridge=0, dtype=torch.float64, debug=False):
 
     return train_mse, test_mse, test_lrn
 
+def compute_learning_curve(ns, n_test, K, Y, ridge=0):
+  train_mses, test_mses, test_lrns = [], [], []
+
+  for n_train in tqdm(ns):
+    train_mse, test_mse, test_lrn = krr(K[:n_train+n_test,:n_train+n_test], Y[:n_train+n_test], n_train, ridge=ridge)
+
+    train_mses.append(train_mse)
+    test_mses.append(test_mse)
+    test_lrns.append(test_lrn)
+
+  train_mses = np.array(train_mses).T
+  test_mses = np.array(test_mses).T
+  test_lrns = np.array(test_lrns).T
+
+  return {
+      'train_mse': train_mses,
+      'test_mse': test_mses,
+      'test_lrn': test_lrns
+  }
+
 def kappa_trace(K, ns, ridge, dtype=torch.float64):
     """
     Compute the experimental kappa values for a range of sizes with ridge regularization.
@@ -137,12 +157,17 @@ def kappa_trace(K, ns, ridge, dtype=torch.float64):
     return torch.tensor(kappas, dtype=dtype).cpu().numpy()
 
 def kernel_eigenvector_weights(K, Y, min_eigenval_threshold=1e-8):
+    if len(Y.shape) == 1:
+        Y = Y[None,:]
+
     K = ensure_torch(K)
     Y = ensure_torch(Y).T
     n, _ = K.shape
     n_Ys = Y.shape[1]
 
     eigenvals, eigenvecs = torch.linalg.eigh(K / n)
+    eigenvals = eigenvals[::-1]
+    eigenvecs = eigenvecs[:, ::-1]
 
     mode_weights = (eigenvecs.T @ Y) ** 2
 
@@ -165,6 +190,6 @@ def kernel_eigenvector_weights(K, Y, min_eigenval_threshold=1e-8):
     return {
         'eigenvals': eigenvals,
         'mode_weights': mode_weights,
-        'geom_mean_eigenvals': geom_mean_eigenvals
+        'geom_mean_eigenval': geom_mean_eigenvals
         }
 

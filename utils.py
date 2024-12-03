@@ -33,6 +33,9 @@ def hermite(k, x):
 
     return sp.special.hermite(k)(x / 2 ** .5) * 2 ** (-k / 2) / sp.special.factorial(k) ** .5
 
+def monomial_of_array(array, monomial):
+  return np.prod([array[idx] ** monomial[idx] for idx in monomial])
+
 def hermite_product(X, exponents):
   n, d = X.shape
 
@@ -42,4 +45,44 @@ def hermite_product(X, exponents):
 
   return fn_vals
 
+def shuffle_indices(**tensors):
+    """
+    Shuffle multiple numpy arrays along all axes with the same random permutation.
 
+    Args:
+        **tensors: Named numpy arrays to shuffle, all of which must have the same shape
+                   with all dimensions equal to n.
+
+    Returns:
+        dict: A dictionary containing the shuffled numpy arrays, with the same keys as the input.
+    """
+    # Ensure all tensors are numpy arrays and have compatible shapes
+    n = None
+    shape = None
+    for name, tensor in tensors.items():
+        if not isinstance(tensor, np.ndarray):
+            raise TypeError(f"{name} must be a numpy array.")
+
+        # Check that all dimensions are equal
+        if not all(dim == tensor.shape[0] for dim in tensor.shape):
+            raise ValueError(f"All dimensions of {name} must be equal. Found shape {tensor.shape}")
+
+        if n is None:
+            n = tensor.shape[0]
+            shape = tensor.shape
+        else:
+            if tensor.shape != shape:
+                raise ValueError(f"All arrays must have the same shape. {name} has shape {tensor.shape}.")
+
+    # Generate a fixed random permutation of indices
+    permutation = np.random.permutation(n)
+
+    # Create an index tuple for advanced indexing
+    idx = np.ix_(*([permutation] * len(shape)))
+
+    # Shuffle all tensors by the same permutation along all axes
+    shuffled_tensors = {}
+    for name, tensor in tensors.items():
+        shuffled_tensors[name] = tensor[idx]
+
+    return shuffled_tensors
