@@ -136,3 +136,35 @@ def kappa_trace(K, ns, ridge, dtype=torch.float64):
 
     return torch.tensor(kappas, dtype=dtype).cpu().numpy()
 
+def kernel_eigenvector_weights(K, Y, min_eigenval_threshold=1e-8):
+    K = ensure_torch(K)
+    Y = ensure_torch(Y).T
+    n, _ = K.shape
+    n_Ys = Y.shape[1]
+
+    eigenvals, eigenvecs = np.linalg.eigh(K / n)
+
+    mode_weights = (eigenvecs.T @ Y) ** 2
+
+    valid_indices = eigenvals > min_eigenval_threshold
+    filtered_eigenvals = eigenvals[valid_indices]
+
+    geom_mean_eigenvals = []
+
+    for i in range(n_Ys):
+        filtered_weights = mode_weights[valid_indices][:,i]
+
+        log_geom_mean_eigenval = (np.log(filtered_eigenvals) * filtered_weights).sum() / filtered_weights.sum()
+        geom_mean_eigenval = np.exp(log_geom_mean_eigenval)
+        geom_mean_eigenvals.append(geom_mean_eigenval)
+
+    eigenvals = ensure_numpy(eigenvals)
+    mode_weights = ensure_numpy(mode_weights)
+    geom_mean_eigenvals = np.array(geom_mean_eigenvals)
+
+    return {
+        'eigenvals': eigenvals,
+        'mode_weights': mode_weights,
+        'geom_mean_eigenvals': geom_mean_eigenvals
+        }
+
