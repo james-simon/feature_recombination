@@ -166,8 +166,8 @@ def kernel_eigenvector_weights(K, Y, min_eigenval_threshold=1e-8):
     n_Ys = Y.shape[1]
 
     eigenvals, eigenvecs = torch.linalg.eigh(K / n)
-    eigenvals = eigenvals[::-1]
-    eigenvecs = eigenvecs[:, ::-1]
+    eigenvals = torch.flip(eigenvals, dims=[0])
+    eigenvecs = torch.flip(eigenvecs, dims=[1])
 
     mode_weights = (eigenvecs.T @ Y) ** 2
 
