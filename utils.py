@@ -86,3 +86,20 @@ def shuffle_indices(**tensors):
         shuffled_tensors[name] = tensor[idx]
 
     return shuffled_tensors
+
+def monomial_string(monomial):
+  if monomial == {}:
+    return "$f(x) = 1$"
+
+  monomial_str = "$f(x) = "
+  for idx in monomial:
+    monomial_str += "x_{"+str(idx)+"}"
+    if monomial[idx] != 1:
+      monomial_str += f"^{monomial[idx]}"
+  monomial_str += "$"
+
+  return monomial_str
+
+def monomial_order(monomial):
+  return sum(monomial.values())
+
