@@ -61,13 +61,23 @@ def load_image_dataset(n_samples, dataset_name, downsampling_factor=1, classes=N
     elif dataset_name == 'CIFAR10':
         dataset = datasets.CIFAR10(root='./data', train=True, download=True, transform=transform)
 
-    # Access the targets (labels)
-    targets = dataset.targets
+    # Access the targets (labels) in a way that handles different torchvision versions
+    if hasattr(dataset, 'targets'):
+        targets = dataset.targets
+    elif hasattr(dataset, 'train_labels'):
+        targets = dataset.train_labels
+    elif hasattr(dataset, 'labels'):
+        targets = dataset.labels
+    else:
+        raise AttributeError(f"The {dataset_name} dataset does not have a 'targets', 'train_labels', or 'labels' attribute.")
+
     # Convert targets to a numpy array for easier processing
     if isinstance(targets, torch.Tensor):
         targets = targets.numpy()
     elif isinstance(targets, list):
         targets = np.array(targets)
+    else:
+        raise TypeError("Unsupported type for targets. Expected list or torch.Tensor.")
 
     if classes is not None:
         # Ensure classes is a set for faster lookup
@@ -91,7 +101,6 @@ def load_image_dataset(n_samples, dataset_name, downsampling_factor=1, classes=N
     # Load and stack samples
     images, labels = zip(*[dataset[i] for i in selected_indices])
     return np.stack(images), np.array(labels)
-
 
 def pca_rotate(X):
     """
