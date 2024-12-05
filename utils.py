@@ -45,47 +45,61 @@ def hermite_product(X, exponents):
 
   return fn_vals
 
-def shuffle_indices(**tensors):
+def shuffle_indices(*tensors):
     """
-    Shuffle multiple numpy arrays along all axes with the same random permutation.
+    Shuffle specified dimensions of multiple numpy arrays using the same random permutation.
 
     Args:
-        **tensors: Named numpy arrays to shuffle, all of which must have the same shape
-                   with all dimensions equal to n.
+        *tensors: Tuples of (tensor, indices_to_shuffle). Each tensor is a numpy array,
+                  and indices_to_shuffle is an int or a tuple/list of ints specifying
+                  which dimensions to shuffle.
 
     Returns:
-        dict: A dictionary containing the shuffled numpy arrays, with the same keys as the input.
+        Tuple of shuffled tensors, in the same order as the input.
     """
-    # Ensure all tensors are numpy arrays and have compatible shapes
-    n = None
-    shape = None
-    for name, tensor in tensors.items():
+    # Collect all axes to shuffle and ensure they have the same size
+    permutation_axis_size = None
+    for tensor, indices in tensors:
         if not isinstance(tensor, np.ndarray):
-            raise TypeError(f"{name} must be a numpy array.")
+            raise TypeError("All tensors must be numpy arrays.")
+        # Ensure indices are in a tuple
+        if isinstance(indices, int):
+            indices = (indices,)
+        elif not isinstance(indices, (tuple, list)):
+            raise TypeError("Indices must be an int or a tuple/list of ints.")
+        for axis in indices:
+            if axis < 0 or axis >= tensor.ndim:
+                raise ValueError(f"Axis {axis} is out of bounds for tensor with shape {tensor.shape}.")
+            axis_size = tensor.shape[axis]
+            if permutation_axis_size is None:
+                permutation_axis_size = axis_size
+            elif permutation_axis_size != axis_size:
+                raise ValueError(
+                    f"All axes to be shuffled must have the same size. "
+                    f"Axis {axis} has size {axis_size}, expected {permutation_axis_size}."
+                )
 
-        # Check that all dimensions are equal
-        if not all(dim == tensor.shape[0] for dim in tensor.shape):
-            raise ValueError(f"All dimensions of {name} must be equal. Found shape {tensor.shape}")
+    # Generate a single random permutation
+    permutation = np.random.permutation(permutation_axis_size)
 
-        if n is None:
-            n = tensor.shape[0]
-            shape = tensor.shape
-        else:
-            if tensor.shape != shape:
-                raise ValueError(f"All arrays must have the same shape. {name} has shape {tensor.shape}.")
+    # Apply the permutation along the specified axes
+    shuffled_tensors = []
+    for tensor, indices in tensors:
+        shuffled_tensor = tensor.copy()
+        if isinstance(indices, int):
+            indices = (indices,)
+        for axis in indices:
+            if tensor.shape[axis] != permutation_axis_size:
+                raise ValueError(
+                    f"Tensor's axis size {tensor.shape[axis]} does not match permutation size {permutation_axis_size}."
+                )
+            # Build index slices for advanced indexing
+            idx = [slice(None)] * tensor.ndim
+            idx[axis] = permutation
+            shuffled_tensor = shuffled_tensor[tuple(idx)]
+        shuffled_tensors.append(shuffled_tensor)
 
-    # Generate a fixed random permutation of indices
-    permutation = np.random.permutation(n)
-
-    # Create an index tuple for advanced indexing
-    idx = np.ix_(*([permutation] * len(shape)))
-
-    # Shuffle all tensors by the same permutation along all axes
-    shuffled_tensors = {}
-    for name, tensor in tensors.items():
-        shuffled_tensors[name] = tensor[idx]
-
-    return shuffled_tensors
+    return tuple(shuffled_tensors)
 
 def monomial_string(monomial):
   if monomial == {}:
