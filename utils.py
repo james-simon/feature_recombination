@@ -36,6 +36,15 @@ def hermite(k, x):
 def monomial_of_array(array, monomial):
   return np.prod([array[idx] ** monomial[idx] for idx in monomial])
 
+def monomial_fn(X, exponents):
+  n, d = X.shape
+
+  fn_vals = np.ones(n)
+  for idx in exponents:
+    fn_vals *= X[:, idx] ** exponents[idx]
+
+  return fn_vals
+
 def hermite_product(X, exponents):
   n, d = X.shape
 

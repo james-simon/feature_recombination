@@ -175,6 +175,7 @@ def kernel_eigenvector_weights(K, Y, min_eigenval_threshold=1e-8):
     filtered_eigenvals = eigenvals[valid_indices]
 
     geom_mean_eigenvals = []
+    median_eigenvals = []
 
     for i in range(n_Ys):
         filtered_weights = mode_weights[valid_indices][:,i]
@@ -183,6 +184,11 @@ def kernel_eigenvector_weights(K, Y, min_eigenval_threshold=1e-8):
         geom_mean_eigenval = torch.exp(log_geom_mean_eigenval).item()
         geom_mean_eigenvals.append(geom_mean_eigenval)
 
+        cumulative_weights = torch.cumsum(mode_weights.flip(0), dim=0).flip(0)
+        half_crossing_index = (cumulative_weights > 0.5).nonzero(as_tuple=True)[0][-1].item()
+        median_eigenval = eigenvals[half_crossing_index].item()
+        median_eigenvals.append(median_eigenval)
+
     eigenvals = ensure_numpy(eigenvals)
     mode_weights = ensure_numpy(mode_weights)
     geom_mean_eigenvals = np.array(geom_mean_eigenvals)
@@ -190,6 +196,7 @@ def kernel_eigenvector_weights(K, Y, min_eigenval_threshold=1e-8):
     return {
         'eigenvals': eigenvals,
         'mode_weights': mode_weights,
-        'geom_mean_eigenvals': geom_mean_eigenvals
+        'geom_mean_eigenvals': geom_mean_eigenvals,
+        'median_eigenvals': median_eigenvals
         }
 
