@@ -69,8 +69,6 @@ def load_image_dataset(n_samples, dataset_name, downsampling_factor=1, classes=N
     elif isinstance(targets, list):
         targets = np.array(targets)
 
-    import pdb; pdb.set_trace()
-
     if classes is not None:
         # Find indices where the labels are in the specified classes
         indices = np.where(np.isin(targets, classes))[0]
