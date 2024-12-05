@@ -20,15 +20,17 @@ def sample_gaussian_data(n_samples, cov_eigvals, target_coeffs, noise_std=0):
 
     return X, Y
 
-def load_image_dataset(n_samples, dataset_name, downsampling_factor=1):
+def load_image_dataset(n_samples, dataset_name, downsampling_factor=1, classes=None):
     """
     Load n_samples images from MNIST or CIFAR10 datasets as flattened NumPy arrays.
     Optionally downsample the images by the specified factor.
+    If classes is specified, only samples from those classes are returned.
 
     Parameters:
     - n_samples (int): Number of images to load.
     - dataset_name (str): Name of the dataset ('MNIST' or 'CIFAR10').
     - downsampling_factor (int): Factor by which to downsample the images.
+    - classes (list or None): List of class labels to include.
 
     Returns:
     - images (np.ndarray): Flattened images of shape (n_samples, downsampled_image_size).
@@ -59,13 +61,37 @@ def load_image_dataset(n_samples, dataset_name, downsampling_factor=1):
     elif dataset_name == 'CIFAR10':
         dataset = datasets.CIFAR10(root='./data', train=True, download=True, transform=transform)
 
-    # Ensure n_samples is within dataset size
-    if n_samples > len(dataset):
-        raise ValueError(f"n_samples must be <= total samples in {dataset_name} ({len(dataset)})")
+    # Access the targets (labels)
+    targets = dataset.targets
+    # Convert targets to a numpy array for easier processing
+    if isinstance(targets, torch.Tensor):
+        targets = targets.numpy()
+    elif isinstance(targets, list):
+        targets = np.array(targets)
+
+    if classes is not None:
+        # Ensure classes is a set for faster lookup
+        classes_set = set(classes)
+        # Find indices where the labels are in the specified classes
+        indices = np.where(np.isin(targets, classes_set))[0]
+
+        # Check that n_samples is not greater than the number of available samples
+        if n_samples > len(indices):
+            raise ValueError(f"Requested {n_samples} samples, but only {len(indices)} samples available for classes {classes}.")
+
+        # Select the first n_samples indices
+        selected_indices = indices[:n_samples]
+    else:
+        # Ensure n_samples is within dataset size
+        if n_samples > len(dataset):
+            raise ValueError(f"n_samples must be <= total samples in {dataset_name} ({len(dataset)})")
+        # Use the first n_samples indices
+        selected_indices = np.arange(n_samples)
 
     # Load and stack samples
-    images, labels = zip(*[dataset[i] for i in range(n_samples)])
+    images, labels = zip(*[dataset[i] for i in selected_indices])
     return np.stack(images), np.array(labels)
+
 
 def pca_rotate(X):
     """

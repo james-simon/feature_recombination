@@ -190,6 +190,6 @@ def kernel_eigenvector_weights(K, Y, min_eigenval_threshold=1e-8):
     return {
         'eigenvals': eigenvals,
         'mode_weights': mode_weights,
-        'geom_mean_eigenval': geom_mean_eigenvals
+        'geom_mean_eigenvals': geom_mean_eigenvals
         }
 
