@@ -2,6 +2,8 @@ import numpy as np
 import scipy as sp
 import torch
 
+from itertools import combinations_with_replacement
+
 def ensure_numpy(x):
     """Convert torch.Tensor to numpy array if necessary."""
     if isinstance(x, torch.Tensor):
@@ -125,4 +127,30 @@ def monomial_string(monomial):
 
 def monomial_order(monomial):
   return sum(monomial.values())
+
+def element_products(arr, orders):
+    """
+    Generate all products of elements from `arr` for the specified list of `orders`.
+
+    Parameters:
+        arr (np.ndarray): Input array of elements.
+        orders (list of int): List of orders for which to compute element products.
+
+    Returns:
+        np.ndarray: Concatenated array of all element products for the specified orders.
+    """
+    all_products = []
+    for order in orders:
+        if order == 0:
+            all_products.append(np.array([1]))
+        elif order >= 1:
+            # Generate all combinations with replacement of the specified order
+            products = [np.prod(comb) for comb in combinations_with_replacement(arr, order)]
+            all_products.append(np.array(products))
+        else:
+            raise ValueError("Each order must be a natural number (0, 1, 2, ...).")
+
+    # Concatenate all results into a single numpy array
+    return np.sort(np.concatenate(all_products))
+
 
