@@ -45,6 +45,41 @@ def linear_kernel(X1, X2):
     X1, X2 = ensure_numpy(X1), ensure_numpy(X2)
     return X1 @ X2.T
 
+def random_feature_kernel(X1, X2, nonlinearity, num_features=1000, downscale_weights=True):
+    """
+    Compute the random feature kernel between X1 and X2.
+
+    Parameters:
+        X1, X2 (np.ndarray): Input data arrays of shape (n_samples1, n_features) and (n_samples2, n_features).
+        nonlinearity (callable): Nonlinearity function to apply to the random features.
+        num_features (int): Number of random features to generate. Default is 1000.
+        downscale_weights (bool): Whether to scale weights by sqrt(X.shape[1]) for neural-net-style scaling. Default is True.
+
+    Returns:
+        np.ndarray: Kernel matrix of shape (n_samples1, n_samples2).
+    """
+    # Ensure inputs are numpy arrays
+    X1, X2 = ensure_numpy(X1), ensure_numpy(X2)
+
+    # Sample random weights
+    n_features = X1.shape[1]
+    W = np.random.randn(n_features, num_features)
+    if downscale_weights:
+        W /= np.sqrt(n_features)
+
+    # Transform data with random features
+    H1 = X1 @ W
+    H2 = X2 @ W
+
+    # Apply nonlinearity
+    F1 = nonlinearity(H1)
+    F2 = nonlinearity(H2)
+
+    # Compute the kernel
+    K = F1 @ F2.T / num_features
+
+    return K
+
 def krr(K, y, n_train, ridge=0, dtype=torch.float64, debug=False):
     """
     Kernel Ridge Regression (KRR) with support for different data types.

@@ -20,7 +20,7 @@ def sample_gaussian_data(n_samples, cov_eigvals, target_coeffs=None, noise_std=0
           Y += noise_std * np.random.randn(*Y.shape)
 
         if len(Y.shape) == 1:
-          Y = Y.reshape(-1, 1);
+          Y = Y.reshape(-1, 1)
 
     return X, Y
 
