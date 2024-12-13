@@ -151,6 +151,6 @@ def element_products(arr, orders):
             raise ValueError("Each order must be a natural number (0, 1, 2, ...).")
 
     # Concatenate all results into a single numpy array
-    return np.sort(np.concatenate(all_products))
+    return np.sort(np.concatenate(all_products))[::-1]
 
 

@@ -6,17 +6,21 @@ from tqdm import tqdm
 
 from .utils import ensure_numpy, ensure_torch
 
-def sample_gaussian_data(n_samples, cov_eigvals, target_coeffs, noise_std=0):
+def sample_gaussian_data(n_samples, cov_eigvals, target_coeffs=None, noise_std=0):
 
     Phi = np.random.randn(n_samples, len(cov_eigvals))
     X = Phi * cov_eigvals ** .5
-    Y = Phi @ target_coeffs
 
-    if noise_std > 0:
-      Y += noise_std * np.random.randn(*Y.shape)
+    Y = None
 
-    if len(Y.shape) == 1:
-      Y = Y.reshape(-1, 1)
+    if target_coeffs is not None:
+        Y = Phi @ target_coeffs
+
+        if noise_std > 0:
+          Y += noise_std * np.random.randn(*Y.shape)
+
+        if len(Y.shape) == 1:
+          Y = Y.reshape(-1, 1)
 
     return X, Y
 
