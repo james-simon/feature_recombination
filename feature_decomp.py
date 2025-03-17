@@ -1,5 +1,5 @@
 import numpy as np
-from .kernels import Kernel
+from kernels import Kernel
 import heapq
 
 class Monomial(dict):
