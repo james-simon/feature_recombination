@@ -32,7 +32,7 @@ def generate_fra_monomials(data_covar_eigvals, num_monomials, kernel_class):
     d = len(data_covar_eigvals)
 
     monomials = [Monomial({})]
-    fra_eigvals = [kernel_class.get_level_coeff(monomials[0])]
+    fra_eigvals = [kernel_class.get_level_coeff_fn(monomials[0])]
     # Each entry in the priority queue is (-fra_eigval, Monomial({idx:exp, ...}))
     pq = [(-get_fra_eigval(data_covar_eigvals, Monomial({0:1}), kernel_class), Monomial({0:1}))]
     heapq.heapify(pq)
@@ -66,7 +66,7 @@ def lookup_monomial_idx(monomials, monomial):
     return None
 
 def get_fra_eigval(eigvals, monomial, kernel_class: Kernel):
-    fra_eigval = kernel_class.get_level_coeff(monomial)
+    fra_eigval = kernel_class.get_level_coeff_fn(monomial)
     for i, exp in monomial.items():
         fra_eigval *= eigvals[i].item() ** exp
     return fra_eigval
