@@ -4,7 +4,7 @@ from torchvision import datasets, transforms
 from torch.nn.functional import avg_pool2d
 from tqdm import tqdm
 
-from .utils import ensure_numpy, ensure_torch
+from utils import ensure_numpy, ensure_torch
 
 def sample_gaussian_data(n_samples, cov_eigvals, target_coeffs=None, noise_std=0):
 
