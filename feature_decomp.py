@@ -1,5 +1,4 @@
 import numpy as np
-from kernels import Kernel
 import heapq
 
 class Monomial(dict):
@@ -27,14 +26,14 @@ class Monomial(dict):
             monostr += f"x{idx}{expstr}."
         return monostr[:-1]
 
-def generate_fra_monomials(data_covar_eigvals, num_monomials, kernel_class):
+def generate_fra_monomials(data_covar_eigvals, num_monomials, eval_level_coeff):
     assert isinstance(num_monomials, int) and num_monomials > 0, "num_monomials must be positive integer"
     d = len(data_covar_eigvals)
 
     monomials = [Monomial({})]
-    fra_eigvals = [kernel_class.get_level_coeff_fn(monomials[0])]
+    fra_eigvals = [get_fra_eigval(data_covar_eigvals, monomials[0], eval_level_coeff)]
     # Each entry in the priority queue is (-fra_eigval, Monomial({idx:exp, ...}))
-    pq = [(-get_fra_eigval(data_covar_eigvals, Monomial({0:1}), kernel_class), Monomial({0:1}))]
+    pq = [(-get_fra_eigval(data_covar_eigvals, Monomial({0:1}), eval_level_coeff), Monomial({0:1}))]
     heapq.heapify(pq)
     while pq and len(monomials) < num_monomials:
         neg_fra_eigval, monomial = heapq.heappop(pq)
@@ -49,12 +48,12 @@ def generate_fra_monomials(data_covar_eigvals, num_monomials, kernel_class):
                 del left_monomial[last_idx]
             left_monomial[last_idx + 1] = left_monomial.get(last_idx + 1, 0) + 1
 
-            fra_eigval = get_fra_eigval(data_covar_eigvals, left_monomial, kernel_class)
+            fra_eigval = get_fra_eigval(data_covar_eigvals, left_monomial, eval_level_coeff)
             heapq.heappush(pq, (-fra_eigval, left_monomial))
 
         right_monomial = monomial.copy()
         right_monomial[last_idx] += 1
-        fra_eigval = get_fra_eigval(data_covar_eigvals, right_monomial, kernel_class)
+        fra_eigval = get_fra_eigval(data_covar_eigvals, right_monomial, eval_level_coeff)
         heapq.heappush(pq, (-fra_eigval, right_monomial))
 
     return np.array(fra_eigvals), monomials
@@ -65,9 +64,9 @@ def lookup_monomial_idx(monomials, monomial):
             return i
     return None
 
-def get_fra_eigval(eigvals, monomial, kernel_class: Kernel):
-    fra_eigval = kernel_class.get_level_coeff_fn(monomial)
+def get_fra_eigval(data_eigvals, monomial, eval_level_coeff):
+    fra_eigval = eval_level_coeff(monomial.degree())
     for i, exp in monomial.items():
-        fra_eigval *= eigvals[i].item() ** exp
+        fra_eigval *= data_eigvals[i].item() ** exp
     return fra_eigval
 
