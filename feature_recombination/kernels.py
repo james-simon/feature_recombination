@@ -2,7 +2,7 @@ import numpy as np
 import torch
 from tqdm import tqdm
 
-from feature_recombination.utils.general import ensure_numpy, ensure_torch
+from .utils.general import ensure_numpy, ensure_torch
 
 class Kernel:
 
