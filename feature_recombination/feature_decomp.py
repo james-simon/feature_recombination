@@ -12,7 +12,7 @@ class Monomial(dict):
     def degree(self):
         if len(self) == 0:
             return 0
-        return np.sum(list(self.values()))
+        return np.sum(self.values())
 
     def copy(self):
         return Monomial(super().copy())
