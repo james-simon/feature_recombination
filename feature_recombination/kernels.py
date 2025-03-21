@@ -183,6 +183,25 @@ class Kernel:
         return 1/np.e
         # raise NotImplementedError
 
+    def kernel_function_projection(self, functions):
+        # functions.shape should be (samples, nfuncs)
+        eigvals, eigvecs = self.eigendecomp()
+        eigvals = eigvals.flip(0,)
+        functions /= torch.linalg.norm(functions, axis=0)
+        overlaps = (eigvecs.T @ functions)**2
+        # overlap has shape (neigvecs, nfuncs)
+        nfuncs = functions.shape[1]
+        cdfs = overlaps.flip(0,).cumsum(axis=0)
+
+        quartiles = np.zeros((nfuncs, 3))
+        for i in range(nfuncs):
+            cdf = cdfs[:, i]
+            quartiles[i, 0] = eigvals[cdf >= 0.25][0]
+            quartiles[i, 1] = eigvals[cdf >= 0.5][0]
+            quartiles[i, 2] = eigvals[cdf >= 0.75][0]
+        cdfs = cdfs.flip(0,)
+
+        return ensure_numpy(overlaps.T), ensure_numpy(cdfs.T), quartiles
 
 #kernels TODO: replace self.K with self.K = self.get_K(args, chunking_on, chunk_size)
 #also need to potentially convert to numpy for chunking, then back to torch for final K matrix(?) ie Xi = ensure_numpy(Xi)
@@ -264,6 +283,41 @@ class LaplaceKernel(Kernel):
             assert k in numerator, f"k={k} level coeff not solved (sorry!)"
             f = numerator[k] / (q**(-1/2) * (2*s*q)**k)
             return f * np.exp(-np.sqrt(2*q)/s)
+        return eval_level_coeff
+
+
+class ReluNNGPKernel(Kernel):
+
+    def __init__(self, X, **kwargs):
+        super().__init__(X)
+        norms = torch.linalg.norm(self.X, dim=-1, keepdim=True)
+        K_norm = norms @ norms.T
+        d = self.X.shape[1]
+        theta = torch.acos((self.X @ self.X.T / K_norm).clip(-1, 1))
+        angular = torch.sin(theta) + (np.pi - theta)*torch.cos(theta)
+        self.K = 1/(2*np.pi) * K_norm * angular
+
+    @staticmethod
+    def get_level_coeff_fn(data_eigvals, **kwargs):
+        q = data_eigvals.sum().item()
+        numerator = {
+            0: 1,
+            1: np.pi / 2,
+            2: 1,
+            3: 0,
+            4: 1,
+            5: 0,
+            6: 9,
+            7: 0,
+            8: 225,
+            9: 0,
+            10: 11025,
+        }
+
+        def eval_level_coeff(k):
+            assert k in numerator, f"k={k} level coeff not solved (sorry!)"
+            f = numerator[k] / q**k
+            return f * q / (2*np.pi)
         return eval_level_coeff
 
 #convert from one X to X1 X2?
