@@ -75,7 +75,7 @@ class Kernel:
             eigvals, eigvecs = torch.linalg.eigh(self.K / n)
             self.eigvals = eigvals.flip((0,))
             self.eigvecs = eigvecs.flip((1,))
-        return self.eigvals, self.eigvecs
+        return self.eigvals.to(self.device), self.eigvecs.to(self.device)
 
     def get_dX(self):
         if not torch.cuda.is_available():
