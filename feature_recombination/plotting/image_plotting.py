@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
-def show_img(img, grayscale=True, vextent=None, ax=None):
+def show_img(img, grayscale=True, vextent=None, ax=None, normalize=True):
     nchan = 1 if grayscale else 3
     cmap = 'gray' if grayscale else None
     vmin, vmax = vextent if vextent is not None else None, None
@@ -11,6 +11,7 @@ def show_img(img, grayscale=True, vextent=None, ax=None):
     imgsz = int(imgsz)
     img = img.reshape(nchan, imgsz, imgsz).cpu().numpy()
     img = np.transpose(img, (1, 2, 0))
+    img = img/img.max() if normalize else img
     if ax is None:
         plt.figure(figsize=(1.5, 1.5))
         plt.axis('off')

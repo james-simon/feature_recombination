@@ -26,7 +26,8 @@ class ImageData():
             e.g. [[0,1], [8]] on MNIST would be a binary classification problem where the first class
             consists of samples of 0's and 1's and the second class has samples of 8's
         onehot (boolean): whether to use one-hot label encodings (typical for MSE loss). Default: True
-        format (str): specify order of (sample, channel, height, width) dims. 'NCHW' default, or 'NHWC.'
+        format (str): specify order of (sample, channel, height, width) dims. 'NCHW' default, 'N' (other
+            axes having been reshaped), or 'NHWC.'
             torchvision.dataset('cifar10') uses latter, needs ToTensor transform to reshape; former is ready-to-use.
         """
 
@@ -47,9 +48,11 @@ class ImageData():
                 X, y = dataset['data'], dataset['labels']
                 X = X.reshape(-1, 3, 32, 32)
                 y -= 1
-            assert format in ['NHWC', 'NCHW']
+            assert format in ['NHWC', 'N', 'NCHW']
             if format == 'NHWC':
                 X = X.transpose(0, 2, 3, 1)
+            elif format == 'N':
+                X = X.reshape(X.shape[0], -1)
 
             if classes is not None:
                 # convert old class labels to new
@@ -84,12 +87,15 @@ class ImageData():
         self.train_X, self.train_y = format_data(raw_train)
         self.test_X, self.test_y = format_data(raw_test)
 
-    def get_dataset(self, n, get="train", rng=None):
+    def get_dataset(self, n, get="train", rng=None, binarize=False, centered=False, normalize=False):
         """Generate an image dataset.
 
         n (int): the dataset size
         rng (numpy RNG): numpy RNG state for random sampling. Default: None
         get (str): either "train" or "test." Default: "train"
+        binarize (bool): binarizes labels to +- 1. Default: False
+        centered (bool): centers the data across samples. Default: False
+        normalize (bool): normalizes the data, mean over samples, variance over pixels. Default: False
 
         Returns: tuple (X, y) such that X.shape = (n, *in_shape), y.shape = (n, *out_shape)
         """
@@ -100,6 +106,19 @@ class ImageData():
         assert get in ["train", "test"]
         full_X, full_y = (self.train_X, self.train_y) if get == "train" else (self.test_X, self.test_y)
 
+        def center_data(X:np.ndarray):
+            return X - X.mean(axis=0)  
+
+        if binarize:
+            full_y = 2*full_y - 1
+
+        if centered:
+            full_X = center_data(full_X)
+
+        if normalize:
+            full_X = center_data(full_X)
+            full_X /= np.linalg.norm(full_X, axis=tuple(range(1, full_X.ndim)), keepdims=True)
+            
         # get subset
         idxs = slice(n) if rng is None else rng.choice(len(full_X), size=n, replace=False)
         X, y = full_X[idxs].copy(), full_y[idxs].copy()
