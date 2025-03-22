@@ -185,10 +185,10 @@ class Kernel:
 
     def kernel_function_projection(self, functions):
         # functions.shape should be (samples, nfuncs)
-        eigvals, eigvecs = self.eigendecomp()
-        eigvals = eigvals.flip(0,)
+        assert self.eigvals is not None, "Call eigendecomp() first"
+        self.eigvals = self.eigvals.flip(0,)
         functions /= torch.linalg.norm(functions, axis=0)
-        overlaps = (eigvecs.T @ functions)**2
+        overlaps = (self.eigvecs.T @ functions)**2
         # overlap has shape (neigvecs, nfuncs)
         nfuncs = functions.shape[1]
         cdfs = overlaps.flip(0,).cumsum(axis=0)
@@ -196,9 +196,9 @@ class Kernel:
         quartiles = np.zeros((nfuncs, 3))
         for i in range(nfuncs):
             cdf = cdfs[:, i]
-            quartiles[i, 0] = eigvals[cdf >= 0.25][0]
-            quartiles[i, 1] = eigvals[cdf >= 0.5][0]
-            quartiles[i, 2] = eigvals[cdf >= 0.75][0]
+            quartiles[i, 0] = self.eigvals[cdf >= 0.25][0]
+            quartiles[i, 1] = self.eigvals[cdf >= 0.5][0]
+            quartiles[i, 2] = self.eigvals[cdf >= 0.75][0]
         cdfs = cdfs.flip(0,)
 
         return ensure_numpy(overlaps.T), ensure_numpy(cdfs.T), quartiles
