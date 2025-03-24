@@ -14,7 +14,7 @@ class Kernel:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu") if device is None else device
 
     def set_K(self, K):
-        self.K = K
+        self.K = K.to(self.device)
         self.eigvals = None
         self.eigvecs = None
 
@@ -143,7 +143,7 @@ class Kernel:
         n, _ = self.K.shape
         n_Ys = Y.shape[1]
 
-        eigenvals, eigenvecs = torch.linalg.eigh(self.K / n)
+        eigenvals, eigenvecs = self.eigendecomp()
         eigenvals = torch.flip(eigenvals, dims=[0])
         eigenvecs = torch.flip(eigenvecs, dims=[1])
 
@@ -221,7 +221,7 @@ class ExponentialKernel(Kernel):
     def __init__(self, X, bandwidth):
         super().__init__(X)
         K_lin = self.X @ self.X.T
-        self.K = torch.exp(K_lin / bandwidth ** 2)
+        self.K = torch.exp(K_lin / bandwidth ** 2).to(self.device)
 
 
 class GaussianKernel(Kernel):
@@ -232,7 +232,7 @@ class GaussianKernel(Kernel):
         assert torch.all(dX.T == dX), "dX must be symmetric"
         assert torch.all(dX >= 0), "dX must be symmetric"
         self.bandwidth = bandwidth
-        self.K = torch.exp(-0.5 * (self.get_dX() / bandwidth) ** 2)
+        self.K = torch.exp(-0.5 * (self.get_dX() / bandwidth) ** 2).to(self.device)
 
     @staticmethod
     def get_level_coeff_fn(bandwidth, data_eigvals):
@@ -248,7 +248,7 @@ class LaplaceKernel(Kernel):
     def __init__(self, X, bandwidth):
         super().__init__(X)
         self.bandwidth = bandwidth
-        self.K = torch.exp(-self.get_dX() / bandwidth)
+        self.K = torch.exp(-self.get_dX() / bandwidth).to(self.device)
 
     @staticmethod
     def get_level_coeff_fn(bandwidth, data_eigvals):
@@ -296,6 +296,7 @@ class ReluNNGPKernel(Kernel):
         theta = torch.acos((self.X @ self.X.T / K_norm).clip(-1, 1))
         angular = torch.sin(theta) + (np.pi - theta)*torch.cos(theta)
         self.K = 1/(2*np.pi) * K_norm * angular
+        self.K = self.K.to(self.device)
 
     @staticmethod
     def get_level_coeff_fn(data_eigvals, **kwargs):
