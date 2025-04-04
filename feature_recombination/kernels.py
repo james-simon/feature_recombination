@@ -223,6 +223,9 @@ class ExponentialKernel(Kernel):
         K_lin = self.X @ self.X.T
         self.K = torch.exp(K_lin / bandwidth ** 2).to(self.device)
 
+    def __type__(self):
+        return "ExponentialKernel"
+
 
 class GaussianKernel(Kernel):
 
@@ -233,6 +236,9 @@ class GaussianKernel(Kernel):
         assert torch.all(dX >= 0), "dX must be symmetric"
         self.bandwidth = bandwidth
         self.K = torch.exp(-0.5 * (self.get_dX() / bandwidth) ** 2).to(self.device)
+    
+    def __type__(self):
+        return "GaussianKernel"
 
     @staticmethod
     def get_level_coeff_fn(bandwidth, data_eigvals):
@@ -249,6 +255,9 @@ class LaplaceKernel(Kernel):
         super().__init__(X)
         self.bandwidth = bandwidth
         self.K = torch.exp(-self.get_dX() / bandwidth).to(self.device)
+
+    def __type__(self):
+        return "LaplaceKernel"
 
     @staticmethod
     def get_level_coeff_fn(bandwidth, data_eigvals):
@@ -297,6 +306,9 @@ class ReluNNGPKernel(Kernel):
         angular = torch.sin(theta) + (np.pi - theta)*torch.cos(theta)
         self.K = 1/(2*np.pi) * K_norm * angular
         self.K = self.K.to(self.device)
+    
+    def __type__(self):
+        return "ReLUNNGPKernel"
 
     @staticmethod
     def get_level_coeff_fn(data_eigvals, **kwargs):
@@ -329,6 +341,9 @@ class RandomFeatureKernel(Kernel):
         self.nonlinearity = nonlinearity
         self.num_features = num_features
         self.randomize_features(num_features)
+
+    def __type__(self):
+        return "RFKernel"
 
     def randomize_features(self, num_features=None):
         if num_features is None:
