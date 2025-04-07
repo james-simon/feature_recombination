@@ -3,7 +3,8 @@ import numpy as np
 import torch
 
 from utils.general import ensure_torch
-from utils.hermite import generate_fra_monomials, get_matrix_hermites
+# from utils.hermite import generate_fra_monomials, get_matrix_hermites
+from utils.stats import get_structure
 
 def generate_configs(params):
     # Define the order of keys
@@ -36,25 +37,21 @@ def generate_configs(params):
 
     return nest_configs(config_list, dynamic_keys)
 
-def generate_structure(config, top_mode_idx = 3000):
+def generate_data(config):
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     d, N, offset, alpha, bandwidth, kerneltype = config
     data_eigvals = ensure_torch((offset+np.arange(d)) ** -alpha)
     data_eigvals /= data_eigvals.sum()
     X = ensure_torch(torch.normal(0, 1, (N, d))).to(DEVICE) * torch.sqrt(data_eigvals).to(DEVICE)
-
-    torch.cuda.empty_cache()
-    kernel = kerneltype(X, bandwidth=bandwidth)
-    eval_level_coeff = kerneltype.get_level_coeff_fn(bandwidth=bandwidth, data_eigvals=data_eigvals)
-
-    fra_eigvals, monomials = generate_fra_monomials(data_eigvals, top_mode_idx, eval_level_coeff)
-    H = get_matrix_hermites(X, monomials).to(DEVICE)
-
+    
+    monomials, kernel, H, fra_eigvals, data_eigvals = get_structure(X, kerneltype, bandwidth, data_eigvals=data_eigvals)
+    
     kernel_eigvals, _ = kernel.eigendecomp()
 
     _, _, quartiles = kernel.kernel_function_projection(H)
 
     return monomials, kernel_eigvals, quartiles, fra_eigvals, data_eigvals
+
 
 def plot_structure(config, monomials, kernel_eigvals, quartiles, fra_eigvals, data_eigvals, ax, xlim=None, title=None):
     d, N, offset, alpha, bandwidth, kerneltype = config
