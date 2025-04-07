@@ -112,27 +112,3 @@ def element_products(arr, orders):
 
     # Concatenate all results into a single numpy array
     return np.sort(np.concatenate(all_products))[::-1]
-
-def PCA(X, normalized: bool = True):
-    """
-    Perform PCA rotation on the input matrix X and return (normalized) PCA eigenvalues.
-
-    Args:
-        X (np.ndarray or torch.Tensor): Input matrix.
-        normalized (bool): Normalization of PCA eigenvalues. Default: True.
-
-    Returns:
-        X_rotated (np.ndarray or torch.Tensor): Rotated matrix.
-        PCA_dirs (np.ndarray or torch.Tensor): PCA directions.
-        eigenvalues (np.ndarray or torch.Tensor): PCA eigenvalues.
-    """
-    is_numpy = isinstance(X, np.ndarray)
-    X = ensure_torch(X)
-    U, S, Vt = torch.linalg.svd(X, full_matrices=False)
-    X_rot = U @ torch.diag(S)
-    PCA_dirs = Vt.T
-    eigenvalues = S**2 / (S**2).sum() if normalized else S
-    if is_numpy:
-        X_rotated = ensure_numpy(X_rotated)
-        eigenvalues = ensure_numpy(eigenvalues)
-    return X_rot, PCA_dirs, eigenvalues

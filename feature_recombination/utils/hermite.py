@@ -19,10 +19,12 @@ def hermite_product(X, exponents):
 
   return fn_vals
 
+
 def get_matrix_hermites(X, monomials):
-    X_rot, PCA_dirs, data_covar_eigvals = PCA(X)
-    X_norm = X_rot / torch.sqrt(data_covar_eigvals[None, :])
     N, _ = X.shape
+    U, S, _ = torch.linalg.svd(X, full_matrices=False)
+    X_norm = np.sqrt(N) * U
+
     hermites = {
         1: lambda x: x,
         2: lambda x: x**2 - 1,
@@ -34,19 +36,13 @@ def get_matrix_hermites(X, monomials):
         8: lambda x: x**8 - 28*x**6 + 210*x**4 - 420*x**2 + 105,
         9: lambda x: x**9 - 36*x**7 + 378*x**5 - 1260*x**3 + 945*x,
         10: lambda x: x**10 - 45*x**8 + 630*x**6 - 3150*x**4 + 4725*x**2 - 945,
-        11: lambda x: x**11 - 55*x**9 + 990*x**7 - 6930*x**5 + 17325*x**3 - 10395*x,
-        12: lambda x: x**12 - 66*x**10 + 1485*x**8 - 13860*x**6 + 51975*x**4 - 62370*x**2 + 10395,
-        13: lambda x: x**13 - 78*x**11 + 2145*x**9 - 25080*x**7 + 135135*x**5 - 270270*x**3 + 135135*x,
-        14: lambda x: x**14 - 91*x**12 + 3003*x**10 - 40040*x**8 + 240240*x**6 - 675675*x**4 + 945945*x**2 - 135135,
-        15: lambda x: x**15 - 105*x**13 + 4095*x**11 - 60060*x**9 + 450450*x**7 - 1621620*x**5 + 2837835*x**3 - 2027025*x,
     }
-
 
     H = torch.zeros((N, len(monomials)))
     for i, monomial in enumerate(monomials):
         h = torch.ones(N) / np.sqrt(N)
         for d_i, exp in monomial.items():
-            Z = torch.tensor(np.sqrt(math.factorial(exp)))
-            h *= hermites[exp](X_norm[:, d_i]).to("cpu") / Z
+            Z = np.sqrt(math.factorial(exp))
+            h *= hermites[exp](X_norm[:, d_i]) / Z
         H[:, i] = h
     return H

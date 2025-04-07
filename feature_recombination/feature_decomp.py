@@ -1,7 +1,8 @@
-import numpy as np
 import heapq
+import numpy as np
 
 class Monomial(dict):
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -12,7 +13,7 @@ class Monomial(dict):
     def degree(self):
         if len(self) == 0:
             return 0
-        return np.sum(list(self.values()))
+        return sum(self.values())
 
     def copy(self):
         return Monomial(super().copy())
@@ -23,8 +24,16 @@ class Monomial(dict):
         monostr = ""
         for idx, exp in self.items():
             expstr = f"^{exp}" if exp > 1 else ""
-            monostr += f"x{idx}{expstr}."
-        return monostr[:-1]
+            monostr += f"x_{{{idx}}}{expstr}"
+        return f"${monostr}$"
+
+
+def get_fra_eigval(data_eigvals, monomial, eval_level_coeff):
+    fra_eigval = eval_level_coeff(monomial.degree())
+    for i, exp in monomial.items():
+        fra_eigval *= data_eigvals[i].item() ** exp
+    return fra_eigval
+
 
 def generate_fra_monomials(data_covar_eigvals, num_monomials, eval_level_coeff):
     assert isinstance(num_monomials, int) and num_monomials > 0, "num_monomials must be positive integer"
@@ -58,17 +67,13 @@ def generate_fra_monomials(data_covar_eigvals, num_monomials, eval_level_coeff):
 
     return np.array(fra_eigvals), monomials
 
+
 def lookup_monomial_idx(monomials, monomial):
     for i, mon in enumerate(monomials):
         if mon == monomial:
             return i
     return None
 
-def get_fra_eigval(data_eigvals, monomial, eval_level_coeff):
-    fra_eigval = eval_level_coeff(monomial.degree())
-    for i, exp in monomial.items():
-        fra_eigval *= data_eigvals[i].item() ** exp
-    return fra_eigval
 
 def get_eigenspectrum_comparison(X, kernel_class):
     

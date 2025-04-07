@@ -1,25 +1,24 @@
 import numpy as np
 import torch
-from tqdm import tqdm
+from utils.general import ensure_torch
 
-from .utils.general import ensure_numpy, ensure_torch
 
 class Kernel:
 
-    def __init__(self, X, device=None):
+    def __init__(self, X):
+        assert X.ndim == 2
         self.X = ensure_torch(X)
         self.K = None
         self.eigvals = None
         self.eigvecs = None
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu") if device is None else device
 
     def set_K(self, K):
-        self.K = K.to(self.device)
+        self.K = K
         self.eigvals = None
         self.eigvecs = None
 
-    def krr(self, y, n_train, ridge=0, shuffle=True, K_override=None):
-        K = self.K if K_override is None else K_override
+    def krr(self, y, n_train, ridge=0, shuffle=True):
+        K = self.K
         y = ensure_torch(y)
         if shuffle:
             idxs = ensure_torch(torch.randperm(K.shape[0], dtype=torch.int32))
@@ -86,183 +85,49 @@ class Kernel:
         dX = torch.zeros((N, N))
         for i in range(0, N, step):
             dX[i:i+step, :] = torch.linalg.norm(self.X[i:i+step, None, :] - self.X[None, :, :], axis=-1)
-        return ensure_torch(dX)
-    
-    def compute_learning_curve(self, ns, n_test: int, Y, ridge=0):
-        train_mses, test_mses, test_lrns = np.zeros_like(ns).T, np.zeros_like(ns).T, np.zeros_like(ns).T
+        dX = ensure_torch(dX)
+        assert torch.all(dX.T == dX), "dX must be symmetric"
+        assert torch.all(dX >= 0), "dX must be nonnegative"
+        return dX
 
-        for index, n_train in tqdm(enumerate(ns), total=len(ns)):
-            train_mse, test_mse, test_lrn = self.krr(K_override=self.K[:n_train+n_test,:n_train+n_test], y=Y[:n_train+n_test], n_train=n_train, ridge=ridge)
 
-            train_mses[index].append(train_mse)
-            test_mses[index].append(test_mse)
-            test_lrns[index].append(test_lrn)
-
-        return {
-            'train_mse': train_mses,
-            'test_mse': test_mses,
-            'test_lrn': test_lrns
-        }
-
-    def kappa_trace(self, ns, ridge, dtype=torch.float64):
-        """
-        Compute the experimental kappa values for a range of sizes with ridge regularization.
-
-        Args:
-            K (Kernel class): Kernel from which the kernel matrix can be obtained.
-            ns (list of int): List of sizes to compute kappa for.
-            ridge (float): Regularization parameter.
-            dtype (torch.dtype): Data type, e.g., torch.float32 or torch.float64.
-
-        Returns:
-            np.ndarray: Array of kappa values for each size in ns.
-        """
-        
-        assert self.K is not None, "Kernel matrix K must be provided."
-
-        kappas = []
-
-        for n in tqdm(ns):
-            # Extract the submatrix and add ridge regularization
-            K_n = self.K[:n, :n] + ridge * torch.eye(n, dtype=dtype, device=self.device)
-
-            # Compute the inverse
-            K_n_inv = torch.linalg.inv(K_n)
-
-            # Compute the trace and append the kappa value
-            trace_inv = torch.trace(K_n_inv).item()  # Convert to Python scalar
-            kappas.append(trace_inv ** -1)
-
-        return torch.tensor(kappas, dtype=dtype).cpu().numpy()
-
-    def kernel_eigenvector_weights(self, Y, min_eigenval_threshold=1e-8):
-        if len(Y.shape) == 1:
-            Y = Y[None,:]
-
-        Y = ensure_torch(Y).T
-        n, _ = self.K.shape
-        n_Ys = Y.shape[1]
-
-        eigenvals, eigenvecs = self.eigendecomp()
-        eigenvals = torch.flip(eigenvals, dims=[0])
-        eigenvecs = torch.flip(eigenvecs, dims=[1])
-
-        mode_weights = (eigenvecs.T @ Y) ** 2
-
-        valid_indices = eigenvals > min_eigenval_threshold
-        filtered_eigenvals = eigenvals[valid_indices]
-
-        geom_mean_eigenvals = []
-        median_eigenvals = []
-
-        for i in range(n_Ys):
-            filtered_weights = mode_weights[valid_indices][:,i]
-
-            log_geom_mean_eigenval = (torch.log(filtered_eigenvals) * filtered_weights).sum() / filtered_weights.sum()
-            geom_mean_eigenval = torch.exp(log_geom_mean_eigenval).item()
-            geom_mean_eigenvals.append(geom_mean_eigenval)
-
-            cumulative_weights = torch.cumsum(mode_weights.flip(0), dim=0).flip(0)
-            half_crossing_index = (cumulative_weights > 0.5).nonzero(as_tuple=True)[0][-1].item()
-            median_eigenval = eigenvals[half_crossing_index].item()
-            median_eigenvals.append(median_eigenval)
-
-        eigenvals = ensure_numpy(eigenvals)
-        mode_weights = ensure_numpy(mode_weights)
-        geom_mean_eigenvals = np.array(geom_mean_eigenvals)
-
-        return {
-            'eigenvals': eigenvals,
-            'mode_weights': mode_weights,
-            'geom_mean_eigenvals': geom_mean_eigenvals,
-            'median_eigenvals': median_eigenvals
-            }
-    
-    @staticmethod
-    def get_level_coeff_fn(bandwidth, data_eigvals):
-        return 1/np.e
-        # raise NotImplementedError
-
-    def kernel_function_projection(self, functions):
-        # functions.shape should be (samples, nfuncs)
-        assert self.eigvals is not None, "Call eigendecomp() first"
-        self.eigvals = self.eigvals.flip(0,)
-        functions /= torch.linalg.norm(functions, axis=0)
-        overlaps = (self.eigvecs.T @ functions)**2
-        # overlap has shape (neigvecs, nfuncs)
-        nfuncs = functions.shape[1]
-        cdfs = overlaps.flip(0,).cumsum(axis=0)
-
-        quartiles = np.zeros((nfuncs, 3))
-        for i in range(nfuncs):
-            cdf = cdfs[:, i]
-            quartiles[i, 0] = self.eigvals[cdf >= 0.25][0]
-            quartiles[i, 1] = self.eigvals[cdf >= 0.5][0]
-            quartiles[i, 2] = self.eigvals[cdf >= 0.75][0]
-        cdfs = cdfs.flip(0,)
-
-        return ensure_numpy(overlaps.T), ensure_numpy(cdfs.T), quartiles
-
-#kernels TODO: replace self.K with self.K = self.get_K(args, chunking_on, chunk_size)
-#also need to potentially convert to numpy for chunking, then back to torch for final K matrix(?) ie Xi = ensure_numpy(Xi)
-"""
-sample chunking method
-# Compute the kernel matrix in chunks
-    for i in tqdm(range(0, n_samples1, chunk_size)):
-        for j in range(0, n_samples2, chunk_size):
-            X1_chunk = X1[i:i + chunk_size]
-            X2_chunk = X2[j:j + chunk_size]
-            diffs = X1_chunk[:, None, :] - X2_chunk[None, :, :]
-            dists = np.linalg.norm(diffs, axis=2)
-            K[i:i + chunk_size, j:j + chunk_size] = np.exp(-0.5 * (dists / width) ** 2)
-"""
 class ExponentialKernel(Kernel):
 
-    def __init__(self, X, bandwidth):
+    def __init__(self, X, **kwargs):
         super().__init__(X)
         K_lin = self.X @ self.X.T
-        self.K = torch.exp(K_lin / bandwidth ** 2).to(self.device)
-
-    def __type__(self):
-        return "ExponentialKernel"
+        self.K = torch.exp(K_lin / kwargs["bandwidth"] ** 2)
 
 
 class GaussianKernel(Kernel):
 
-    def __init__(self, X, bandwidth):
+    def __init__(self, X, **kwargs):
         super().__init__(X)
         dX = self.get_dX()
-        assert torch.all(dX.T == dX), "dX must be symmetric"
-        assert torch.all(dX >= 0), "dX must be symmetric"
-        self.bandwidth = bandwidth
-        self.K = torch.exp(-0.5 * (self.get_dX() / bandwidth) ** 2).to(self.device)
-    
-    def __type__(self):
-        return "GaussianKernel"
+        self.bandwidth = kwargs["bandwidth"]
+        self.K = torch.exp(-0.5 * (self.get_dX() / self.bandwidth) ** 2)
 
     @staticmethod
-    def get_level_coeff_fn(bandwidth, data_eigvals):
+    def get_level_coeff_fn(data_eigvals, **kwargs):
         q = data_eigvals.sum().item()
-        precision = 1 / bandwidth**2
+        precision = 1 / kwargs["bandwidth"]**2
+        norm = kwargs["avg_norm"] if "avg_norm" in kwargs else 1
         def eval_level_coeff(k):
-            return precision**k * np.exp(-precision*q)
+            return (norm*precision)**k * np.exp(-precision*q)
         return eval_level_coeff
 
 
 class LaplaceKernel(Kernel):
 
-    def __init__(self, X, bandwidth):
+    def __init__(self, X, **kwargs):
         super().__init__(X)
-        self.bandwidth = bandwidth
-        self.K = torch.exp(-self.get_dX() / bandwidth).to(self.device)
-
-    def __type__(self):
-        return "LaplaceKernel"
+        self.bandwidth = kwargs["bandwidth"]
+        self.K = torch.exp(-self.get_dX() / self.bandwidth)
 
     @staticmethod
-    def get_level_coeff_fn(bandwidth, data_eigvals):
+    def get_level_coeff_fn(data_eigvals, **kwargs):
         q = data_eigvals.sum().item()
-        s = bandwidth
+        s = kwargs["bandwidth"]
         numerator = {
             0: 1,
             1: np.sqrt(2),
@@ -305,10 +170,6 @@ class ReluNNGPKernel(Kernel):
         theta = torch.acos((self.X @ self.X.T / K_norm).clip(-1, 1))
         angular = torch.sin(theta) + (np.pi - theta)*torch.cos(theta)
         self.K = 1/(2*np.pi) * K_norm * angular
-        self.K = self.K.to(self.device)
-    
-    def __type__(self):
-        return "ReLUNNGPKernel"
 
     @staticmethod
     def get_level_coeff_fn(data_eigvals, **kwargs):
@@ -333,17 +194,14 @@ class ReluNNGPKernel(Kernel):
             return f * q / (2*np.pi)
         return eval_level_coeff
 
-#convert from one X to X1 X2?
+
 class RandomFeatureKernel(Kernel):
 
-    def __init__(self, X, nonlinearity=None, num_features=1000):
+    def __init__(self, X, **kwargs):
         super().__init__(X)
-        self.nonlinearity = nonlinearity
-        self.num_features = num_features
-        self.randomize_features(num_features)
-
-    def __type__(self):
-        return "RFKernel"
+        self.nonlinearity = kwargs["nonlinearity"]
+        self.num_features = kwargs["num_features"]
+        self.randomize_features(self.num_features)
 
     def randomize_features(self, num_features=None):
         if num_features is None:
