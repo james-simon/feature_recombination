@@ -2,8 +2,8 @@ from itertools import product
 import numpy as np
 import torch
 
-from feature_recombination.utils.general import ensure_torch
-from feature_recombination.utils.hermite import generate_fra_monomials, get_matrix_hermites
+from utils.general import ensure_torch
+from utils.hermite import generate_fra_monomials, get_matrix_hermites
 
 def generate_configs(params):
     # Define the order of keys
