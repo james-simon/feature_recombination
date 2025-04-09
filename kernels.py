@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from utils.general import ensure_torch
+from utils.general import ensure_torch, ensure_numpy
 
 
 class Kernel:
@@ -91,6 +91,25 @@ class Kernel:
         assert torch.all(dX >= 0), "dX must be nonnegative"
         return dX
 
+    def kernel_function_projection(self, functions):
+         # functions.shape should be (samples, nfuncs)
+         assert self.eigvals is not None, "Call eigendecomp() first"
+         self.eigvals = self.eigvals.flip(0,)
+         functions /= torch.linalg.norm(functions, axis=0)
+         overlaps = (self.eigvecs.T @ functions)**2
+         # overlap has shape (neigvecs, nfuncs)
+         nfuncs = functions.shape[1]
+         cdfs = overlaps.flip(0,).cumsum(axis=0)
+ 
+         quartiles = np.zeros((nfuncs, 3))
+         for i in range(nfuncs):
+             cdf = cdfs[:, i]
+             quartiles[i, 0] = self.eigvals[cdf >= 0.25][0]
+             quartiles[i, 1] = self.eigvals[cdf >= 0.5][0]
+             quartiles[i, 2] = self.eigvals[cdf >= 0.75][0]
+         cdfs = cdfs.flip(0,)
+ 
+         return ensure_numpy(overlaps.T), ensure_numpy(cdfs.T), quartiles
 
 class ExponentialKernel(Kernel):
 
