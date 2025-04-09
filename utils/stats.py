@@ -1,8 +1,9 @@
 import torch
 import numpy as np
-from .hermite import generate_fra_monomials, get_matrix_hermites
+from .hermite import get_matrix_hermites
+from feature_decomp import generate_fra_monomials
 
-def get_structure(X, kerneltype, bandwidth, top_mode_idx = 3000, data_eigvals = None):
+def get_standard_tools(X, kerneltype, bandwidth, top_mode_idx = 3000, data_eigvals = None):
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     N, _ = X.shape
     if data_eigvals is None:
