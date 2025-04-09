@@ -5,15 +5,16 @@ from utils.general import ensure_torch
 
 class Kernel:
 
-    def __init__(self, X):
+    def __init__(self, X, device=None):
         assert X.ndim == 2
         self.X = ensure_torch(X)
         self.K = None
         self.eigvals = None
         self.eigvecs = None
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu") if device is None else device
 
     def set_K(self, K):
-        self.K = K
+        self.K = K.to(self.device)
         self.eigvals = None
         self.eigvecs = None
 
@@ -96,8 +97,10 @@ class ExponentialKernel(Kernel):
     def __init__(self, X, **kwargs):
         super().__init__(X)
         K_lin = self.X @ self.X.T
-        self.K = torch.exp(K_lin / kwargs["bandwidth"] ** 2)
+        self.K = torch.exp(K_lin / kwargs["bandwidth"] ** 2).to(self.device)
 
+    def __type__(self):
+        return "ExponentialKernel"
 
 class GaussianKernel(Kernel):
 
@@ -105,7 +108,7 @@ class GaussianKernel(Kernel):
         super().__init__(X)
         dX = self.get_dX()
         self.bandwidth = kwargs["bandwidth"]
-        self.K = torch.exp(-0.5 * (self.get_dX() / self.bandwidth) ** 2)
+        self.K = torch.exp(-0.5 * (self.get_dX() / self.bandwidth) ** 2).to(self.device)
 
     @staticmethod
     def get_level_coeff_fn(data_eigvals, **kwargs):
@@ -116,13 +119,15 @@ class GaussianKernel(Kernel):
             return (norm*precision)**k * np.exp(-precision*q)
         return eval_level_coeff
 
+    def __type__(self):
+         return "GaussianKernel"
 
 class LaplaceKernel(Kernel):
 
     def __init__(self, X, **kwargs):
         super().__init__(X)
         self.bandwidth = kwargs["bandwidth"]
-        self.K = torch.exp(-self.get_dX() / self.bandwidth)
+        self.K = torch.exp(-self.get_dX() / self.bandwidth).to(self.device)
 
     @staticmethod
     def get_level_coeff_fn(data_eigvals, **kwargs):
@@ -159,6 +164,8 @@ class LaplaceKernel(Kernel):
             return f * np.exp(-np.sqrt(2*q)/s)
         return eval_level_coeff
 
+    def __type__(self):
+         return "LaplaceKernel"
 
 class ReluNNGPKernel(Kernel):
 
@@ -169,7 +176,7 @@ class ReluNNGPKernel(Kernel):
         d = self.X.shape[1]
         theta = torch.acos((self.X @ self.X.T / K_norm).clip(-1, 1))
         angular = torch.sin(theta) + (np.pi - theta)*torch.cos(theta)
-        self.K = 1/(2*np.pi) * K_norm * angular
+        self.K = (1/(2*np.pi) * K_norm * angular).to(self.device)
 
     @staticmethod
     def get_level_coeff_fn(data_eigvals, **kwargs):
@@ -193,6 +200,9 @@ class ReluNNGPKernel(Kernel):
             f = numerator[k] / q**k
             return f * q / (2*np.pi)
         return eval_level_coeff
+    
+    def __type__(self):
+         return "ReLUNNGPKernel"
 
 
 class RandomFeatureKernel(Kernel):
@@ -212,3 +222,6 @@ class RandomFeatureKernel(Kernel):
         if self.nonlinearity:
             features = self.nonlinearity(features)
         self.set_K(features @ features.T)
+
+    def __type__(self):
+         return "RFKernel"
