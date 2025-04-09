@@ -42,7 +42,7 @@ def get_matrix_hermites(X, monomials):
     for i, monomial in enumerate(monomials):
         h = torch.ones(N) / np.sqrt(N)
         for d_i, exp in monomial.items():
-            Z = np.sqrt(math.factorial(exp))
-            h *= hermites[exp](X_norm[:, d_i]) / Z
+            Z = torch.tensor(np.sqrt(math.factorial(exp)))
+            h *= hermites[exp](X_norm[:, d_i]).to("cpu") / Z
         H[:, i] = h
     return H
