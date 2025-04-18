@@ -18,4 +18,4 @@ def eigvecs_to_independent(eigenvectors, bsz=1, rng = None):
 def independentize_data(X, bsz=1, rng=None):
     eigenvectors, Vt = grab_eigval_distributions(X)
     independent_data = eigvecs_to_independent(eigenvectors, bsz, rng)
-    return ensure_torch(independent_data) @ Vt
+    return ensure_torch(independent_data) @ ensure_torch(Vt)
