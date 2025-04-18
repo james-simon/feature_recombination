@@ -8,7 +8,7 @@ from utils.stats import get_structure
 
 def generate_configs(params):
     # Define the order of keys
-    key_order = ["d", "N", "offset", "alpha", "bandwidth", "kerneltype"]
+    key_order = ["d", "N", "offset", "alpha", "kernel_width", "kerneltype"]
 
     # Separate static and dynamic parameters
     dynamics = {k: v for k, v in params.items() if isinstance(v, (list, tuple, np.ndarray))}
@@ -39,12 +39,12 @@ def generate_configs(params):
 
 def generate_data(config):
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    d, N, offset, alpha, bandwidth, kerneltype = config
+    d, N, offset, alpha, kernel_width, kerneltype = config
     data_eigvals = ensure_torch((offset+np.arange(d)) ** -alpha)
     data_eigvals /= data_eigvals.sum()
     X = ensure_torch(torch.normal(0, 1, (N, d))).to(DEVICE) * torch.sqrt(data_eigvals).to(DEVICE)
     
-    monomials, kernel, H, fra_eigvals, data_eigvals = get_structure(X, kerneltype, bandwidth, data_eigvals=data_eigvals)
+    monomials, kernel, H, fra_eigvals, data_eigvals = get_structure(X, kerneltype, kernel_width, data_eigvals=data_eigvals)
     
     kernel_eigvals, _ = kernel.eigendecomp()
 
@@ -54,7 +54,7 @@ def generate_data(config):
 
 
 def plot_structure(config, monomials, kernel_eigvals, quartiles, fra_eigvals, data_eigvals, ax, xlim=None, title=None):
-    d, N, offset, alpha, bandwidth, kerneltype = config
+    d, N, offset, alpha, kernel_width, kerneltype = config
     degrees = [monomial.degree() for monomial in monomials]
     colors = ['xkcd:red', 'xkcd:orange', 'xkcd:gold', 'xkcd:green', 'xkcd:blue', "xkcd:purple", "xkcd:black"]
 
@@ -77,6 +77,6 @@ def plot_structure(config, monomials, kernel_eigvals, quartiles, fra_eigvals, da
     ax.text(0.05, 0.9, f'$d={d}$', **text_kwargs)
     ax.text(0.05, 0.825, f'$N={N}$', **text_kwargs)
     ax.text(0.05, 0.75, f'$\\alpha={alpha}$', **text_kwargs)
-    ax.text(0.05, 0.675, f'$\sigma={bandwidth:.2f}$', **text_kwargs)
+    ax.text(0.05, 0.675, f'$\sigma={kernel_width:.2f}$', **text_kwargs)
     ax.text(0.05, 0.6, f'$i_0={offset}$', **text_kwargs)
     ax.text(0.05, 0.525, f'$d_\mathrm{{eff}}={d_eff:.2f}$', **text_kwargs)

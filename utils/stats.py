@@ -3,7 +3,7 @@ import numpy as np
 from .hermite import get_matrix_hermites
 from feature_decomp import generate_fra_monomials
 
-def get_standard_tools(X, kerneltype, bandwidth, top_mode_idx = 3000, data_eigvals = None):
+def get_standard_tools(X, kerneltype, kernel_width, top_mode_idx = 3000, data_eigvals = None):
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     N, _ = X.shape
     if data_eigvals is None:
@@ -12,10 +12,20 @@ def get_standard_tools(X, kerneltype, bandwidth, top_mode_idx = 3000, data_eigva
         X *= torch.sqrt(N / (S**2).sum())
         data_eigvals = S**2 / (S**2).sum()
 
-    kernel = kerneltype(X, bandwidth=bandwidth)
-    eval_level_coeff = kerneltype.get_level_coeff_fn(bandwidth=bandwidth, data_eigvals=data_eigvals)
+    kernel = kerneltype(X, kernel_width=kernel_width)
+    eval_level_coeff = kerneltype.get_level_coeff_fn(kernel_width=kernel_width, data_eigvals=data_eigvals)
 
     fra_eigvals, monomials = generate_fra_monomials(data_eigvals, top_mode_idx, eval_level_coeff)
     H = get_matrix_hermites(X, monomials).to(DEVICE)
 
     return monomials, kernel, H, fra_eigvals, data_eigvals
+
+def grab_eigval_distributions(X):
+    # N, d = X.shape
+
+    U, S, Vt = torch.linalg.svd(X, full_matrices=False)
+
+    #each column is an vector corresponding to the i-th eigenvalue
+    eigenvector_array = U @ torch.diag(S)# * np.sqrt(N)
+
+    return eigenvector_array, Vt

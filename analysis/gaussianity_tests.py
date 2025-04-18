@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.stats import norm
 from utils.general import ensure_numpy
+from utils.stats import grab_eigval_distributions
 
 def get_emperical_pdf(X, num_bins=100, tol=1e-3):
     counts, bin_edges = np.histogram(X, bins=num_bins, density=True)
@@ -31,7 +32,7 @@ def get_emperical_cdf(X):
 #     samples = bin_left_edges + random_within_bin * (bin_right_edges - bin_left_edges)
 #     return samples
 
-def gaussianize_data(X, S=None):
+def eigvecs_to_gaussian(X, S=None):
     X = ensure_numpy(X)
     S = ensure_numpy(S)
     uniform = get_emperical_cdf(X)
@@ -44,3 +45,8 @@ def gaussianize_data(X, S=None):
         else:
             gaussian_data *= S.reshape(1, -1)  # broadcast to columns
     return gaussian_data
+
+def gaussianize_data(X, S=None):
+    eigenvectors, Vt = grab_eigval_distributions(X)
+    gaussian_data = eigvecs_to_gaussian(eigenvectors, S)
+    return gaussian_data @ Vt
