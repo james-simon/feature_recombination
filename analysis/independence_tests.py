@@ -13,7 +13,7 @@ def eigvecs_to_independent(eigenvectors, bsz=1, rng = None):
         random_rows = rng.integers(0, m, size=n)
         independent_components[i] = eigenvectors[random_rows, np.arange(n)]
 
-    return independent_components
+    return ensure_torch(independent_components)
 
 def independentize_data(X, bsz=1, rng=None):
     eigenvectors, Vt = grab_eigval_distributions(X)
