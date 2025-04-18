@@ -40,7 +40,7 @@ def get_matrix_hermites(X, monomials):
 
     H = torch.zeros((N, len(monomials)))
     for i, monomial in enumerate(monomials):
-        h = ensure_torch(torch.ones(N) / torch.sqrt(N))
+        h = ensure_torch(torch.ones(N) / np.sqrt(N))
         for d_i, exp in monomial.items():
             Z = ensure_torch(np.sqrt(math.factorial(exp)))
             h *= ensure_torch(hermites[exp](X_norm[:, d_i])) / Z #ensure_torch prob not required?
