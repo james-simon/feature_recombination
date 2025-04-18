@@ -1,5 +1,7 @@
 import matplotlib.pyplot as plt
+import seaborn as sns
 import numpy as np
+from utils.general import ensure_numpy
 
 def show_img(img, grayscale=True, vextent=None, ax=None, normalize=True):
     nchan = 1 if grayscale else 3
@@ -20,3 +22,28 @@ def show_img(img, grayscale=True, vextent=None, ax=None, normalize=True):
         return
     ax.axis('off')
     return ax.imshow(img, vmin=vmin, vmax=vmax, cmap=cmap)
+
+def compare_heatmaps(X1, X2, idx1, idx2, plot_axes=None):
+    col1 = ensure_numpy(X1[:, idx1])
+    col2 = ensure_numpy(X1[:, idx2])
+    gdata1 = ensure_numpy(X2[:, idx1])
+    gdata2 = ensure_numpy(X2[:, idx2])
+
+    heatmap_data_1, xedges, yedges = np.histogram2d(col1, col2, bins=100)
+    heatmap_data_2, xedges, yedges = np.histogram2d(gdata1, gdata2, bins=100)
+
+    fig, axes = plt.subplots(1, 2, figsize=(10, 5)) if plot_axes is None else plot_axes
+    
+    sns.heatmap(heatmap_data_1.T, 
+                xticklabels=False, 
+                yticklabels=False, 
+                cmap='viridis', ax=axes[0])
+    axes[0].set_title("Normal data")
+
+    sns.heatmap(heatmap_data_2.T, 
+                xticklabels=False, 
+                yticklabels=False, 
+                cmap='viridis', ax=axes[1])
+    axes[1].set_title("Gaussianized data")
+    plt.tight_layout()
+    plt.show()

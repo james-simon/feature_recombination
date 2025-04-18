@@ -156,3 +156,61 @@ class ImageData():
         assert len(X) == n
         return X, y
 
+    # def _get_imagenet(self, class_url_dict):
+    #     # from torch.utils.data import Dataset, DataLoader
+    #     from PIL import Image
+    #     from io import BytesIO
+    #     # import torchvision.transforms as transforms
+
+    #     self.data = []
+    #     self.labels = []
+    #     self.class_to_idx = {cls_name: idx for idx, cls_name in enumerate(class_url_dict.keys())}
+        
+    #     for cls_name, urls in class_url_dict.items():
+    #         label = self.class_to_idx[cls_name]
+    #         count = 0
+    #         for url in urls:
+    #             try:
+    #                 response = requests.get(url, timeout=5)
+    #                 img = Image.open(BytesIO(response.content)).convert("RGB")
+    #                 self.data.append(img)
+    #                 self.labels.append(label)
+    #                 count += 1
+    #                 if count >= max_per_class:
+    #                     break
+    #             except Exception as e:
+    #                 print(f"Skipping broken image: {url} ({e})")
+    
+    # def _get_imagenet_urls(synset_dict, max_per_class=10):
+    #     import requests
+    #     class_url_dict = {}
+    #     for class_name, synset in synset_dict.items():
+    #         try:
+    #             url = f"https://www.image-net.org/api/text/imagenet.synset.geturls?wnid={synset}"
+    #             response = requests.get(url)
+    #             urls = response.text.splitlines()
+    #             class_url_dict[class_name] = urls[:max_per_class]
+    #         except Exception as e:
+    #             print(f"Failed to fetch URLs for {class_name}: {e}")
+    #             class_url_dict[class_name] = []
+    #     return class_url_dict
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        img = self.data[idx]
+        label = self.labels[idx]
+        if self.transform:
+            img = self.transform(img)
+        return img, label
+
+# def test_imagenet(class_synsets, max_per_class=100):
+#     import requests
+
+#     def get_imageset(synset='n01440764'):    
+#         url = f"https://www.image-net.org/api/text/imagenet.synset.geturls?wnid={synset}"
+#         response = requests.get(url)
+#         image_urls = response.text.splitlines()
+
+#     class_dict = {synset: get_imageset(synset) for synset in class_synsets}
