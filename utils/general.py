@@ -19,6 +19,8 @@ def ensure_torch(x, dtype=torch.float64):
     elif isinstance(x, torch.Tensor):
         if x.device != DEVICE:
             x = x.to(DEVICE)
+        if x.dtype != dtype:
+            x = x.to(dtype)
     return x
 
 def rms(x):
