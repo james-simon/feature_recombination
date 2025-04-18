@@ -32,7 +32,7 @@ def get_emperical_cdf(X):
 #     samples = bin_left_edges + random_within_bin * (bin_right_edges - bin_left_edges)
 #     return samples
 
-def eigvecs_to_gaussian(X, S=None):
+def eigvecs_to_gaussian(X, S=None, to_torch=True):
     X = ensure_numpy(X)
     S = ensure_numpy(S)
     uniform = get_emperical_cdf(X)
@@ -44,9 +44,9 @@ def eigvecs_to_gaussian(X, S=None):
             gaussian_data *= S
         else:
             gaussian_data *= S.reshape(1, -1)  # broadcast to columns
-    return gaussian_data
+    return ensure_torch(gaussian_data) if to_torch else gaussian_data
 
 def gaussianize_data(X, S=None):
     eigenvectors, Vt = grab_eigval_distributions(X)
     gaussian_data = eigvecs_to_gaussian(eigenvectors, S)
-    return ensure_torch(gaussian_data) @ Vt
+    return gaussian_data @ Vt

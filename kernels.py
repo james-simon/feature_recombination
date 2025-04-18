@@ -14,7 +14,7 @@ class Kernel:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu") if device is None else device
 
     def set_K(self, K):
-        self.K = K.to(self.device)
+        self.K = K.to(self.device) #todevice might not be needed after ensure_torch update
         self.eigvals = None
         self.eigvecs = None
 

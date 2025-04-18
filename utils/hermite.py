@@ -3,7 +3,7 @@ import numpy as np
 import torch
 import math
 
-# from .general import ensure_torch, ensure_numpy
+from .general import ensure_torch
 
 def hermite(k, x):
     """Compute the k-th probabilist's Hermite polynomial at x, normalized to have unit norm against the standard normal distribution."""
@@ -23,7 +23,7 @@ def hermite_product(X, exponents):
 def get_matrix_hermites(X, monomials):
     N, _ = X.shape
     U, S, _ = torch.linalg.svd(X, full_matrices=False)
-    X_norm = np.sqrt(N) * U
+    X_norm = torch.sqrt(N) * U
 
     hermites = {
         1: lambda x: x,
@@ -40,9 +40,9 @@ def get_matrix_hermites(X, monomials):
 
     H = torch.zeros((N, len(monomials)))
     for i, monomial in enumerate(monomials):
-        h = torch.ones(N) / np.sqrt(N)
+        h = ensure_torch(torch.ones(N) / torch.sqrt(N))
         for d_i, exp in monomial.items():
-            Z = torch.tensor(np.sqrt(math.factorial(exp)))
-            h *= hermites[exp](X_norm[:, d_i]).to("cpu") / Z
+            Z = ensure_torch(torch.sqrt(math.factorial(exp)))
+            h *= ensure_torch(hermites[exp](X_norm[:, d_i])) / Z #ensure_torch prob not required?
         H[:, i] = h
     return H

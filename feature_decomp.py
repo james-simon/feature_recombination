@@ -1,5 +1,6 @@
 import heapq
 import numpy as np
+# import torch
 
 class Monomial(dict):
 
@@ -75,14 +76,15 @@ def lookup_monomial_idx(monomials, monomial):
     return None
 
 
-def get_eigenspectrum_comparison(X, kernel_class):
-    
-    S_normalized = X.cpu().numpy()/np.sum(X.cpu().numpy()) #normalization condition
-    kernel = kernel_class(X, kernel_width=1)
-    eigvals = kernel.eigenvals()
+# def get_eigenspectrum_comparison(X, kernel_class):
+#     #not sure what this is being used for; update
+#     S_normalized = X/torch.sum(X) #normalization condition
+#     kernel = kernel_class(X, kernel_width=1)
+#     eigvals = kernel.eigenvals()
 
-    level_coeffs = kernel_class.get_level_coeff_fn(kernel_width=1, data_eigvals=S_normalized)
+#     level_coeffs = kernel_class.get_level_coeff_fn(kernel_width=1, data_eigvals=S_normalized)
 
-    top_mode_idx = 500
-    fra_eigvals, monomials = generate_fra_monomials(S_normalized, top_mode_idx, level_coeffs)
-    degrees = [monomial.degree() for monomial in monomials]
+#     top_mode_idx = 500
+#     fra_eigvals, monomials = generate_fra_monomials(S_normalized, top_mode_idx, level_coeffs)
+#     degrees = [monomial.degree() for monomial in monomials]
+#     return None
