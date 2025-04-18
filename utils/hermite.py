@@ -23,7 +23,7 @@ def hermite_product(X, exponents):
 def get_matrix_hermites(X, monomials):
     N, _ = X.shape
     U, S, _ = torch.linalg.svd(X, full_matrices=False)
-    X_norm = torch.sqrt(N) * U
+    X_norm = ensure_torch(np.sqrt(N) * U)
 
     hermites = {
         1: lambda x: x,
@@ -42,7 +42,7 @@ def get_matrix_hermites(X, monomials):
     for i, monomial in enumerate(monomials):
         h = ensure_torch(torch.ones(N) / torch.sqrt(N))
         for d_i, exp in monomial.items():
-            Z = ensure_torch(torch.sqrt(math.factorial(exp)))
+            Z = ensure_torch(np.sqrt(math.factorial(exp)))
             h *= ensure_torch(hermites[exp](X_norm[:, d_i])) / Z #ensure_torch prob not required?
         H[:, i] = h
     return H
