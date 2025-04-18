@@ -40,7 +40,7 @@ def gaussianize_data(X, S=None):
     if S is not None:
         S = np.asarray(S)
         if S.ndim == 0:
-            gaussian *= S
+            gaussian_data *= S
         else:
-            gaussian *= S.reshape(1, -1)  # broadcast to columns
+            gaussian_data *= S.reshape(1, -1)  # broadcast to columns
     return gaussian_data
