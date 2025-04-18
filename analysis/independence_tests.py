@@ -13,7 +13,7 @@ def grab_eigval_distributions(X):
 
 def independent_distributions(eigenvectors, bsz=1, rng = None):
     rng = np.random.default_rng() if rng is None else rng
-    m, n = eigenvectors.shape
+    m, n = eigenvectors.shape #m = num datapoints, m=n
     independent_components = torch.zeros((bsz, n))
 
     for i in range(bsz):
@@ -23,7 +23,7 @@ def independent_distributions(eigenvectors, bsz=1, rng = None):
 
     return independent_components
 
-def generate_independent_data(X, bsz=1, rng=None):
+def independentize_data(X, bsz=1, rng=None):
     eigenvectors, _ = grab_eigval_distributions(X)
     independent_data = independent_distributions(eigenvectors, bsz, rng)
     return independent_data
