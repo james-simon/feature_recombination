@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.stats import norm
-from utils.general import ensure_numpy
+from utils.general import ensure_numpy, ensure_torch
 from utils.stats import grab_eigval_distributions
 
 def get_emperical_pdf(X, num_bins=100, tol=1e-3):
@@ -49,4 +49,4 @@ def eigvecs_to_gaussian(X, S=None):
 def gaussianize_data(X, S=None):
     eigenvectors, Vt = grab_eigval_distributions(X)
     gaussian_data = eigvecs_to_gaussian(eigenvectors, S)
-    return gaussian_data @ Vt
+    return ensure_torch(gaussian_data) @ Vt
