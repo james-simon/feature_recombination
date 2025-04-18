@@ -94,9 +94,9 @@ class Kernel:
     def kernel_function_projection(self, functions):
          # functions.shape should be (samples, nfuncs)
          assert self.eigvals is not None, "Call eigendecomp() first"
-         self.eigvals = self.eigvals.flip(0,)
-         functions /= torch.linalg.norm(functions, axis=0).to(self.device)
-         overlaps = (self.eigvecs.T @ functions)**2
+         self.eigvals = ensure_torch(self.eigvals.flip(0,))
+         functions /= torch.linalg.norm(functions, axis=0)
+         overlaps = (self.eigvecs.T @ ensure_torch(functions))**2
          # overlap has shape (neigvecs, nfuncs)
          nfuncs = functions.shape[1]
          cdfs = overlaps.flip(0,).cumsum(axis=0)
