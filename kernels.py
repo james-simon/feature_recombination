@@ -116,7 +116,7 @@ class ExponentialKernel(Kernel):
     def __init__(self, X, **kwargs):
         super().__init__(X)
         K_lin = self.X @ self.X.T
-        self.K = torch.exp(K_lin / kwargs["bandwidth"] ** 2).to(self.device)
+        self.K = torch.exp(K_lin / kwargs["kernel_width"] ** 2).to(self.device)
 
     def __type__(self):
         return "ExponentialKernel"
@@ -126,13 +126,13 @@ class GaussianKernel(Kernel):
     def __init__(self, X, **kwargs):
         super().__init__(X)
         dX = self.get_dX()
-        self.bandwidth = kwargs["bandwidth"]
-        self.K = torch.exp(-0.5 * (self.get_dX() / self.bandwidth) ** 2).to(self.device)
+        self.kernel_width = kwargs["kernel_width"]
+        self.K = torch.exp(-0.5 * (self.get_dX() / self.kernel_width) ** 2).to(self.device)
 
     @staticmethod
     def get_level_coeff_fn(data_eigvals, **kwargs):
         q = data_eigvals.sum().item()
-        precision = 1 / kwargs["bandwidth"]**2
+        precision = 1 / kwargs["kernel_width"]**2
         norm = kwargs["avg_norm"] if "avg_norm" in kwargs else 1
         def eval_level_coeff(k):
             return (norm*precision)**k * np.exp(-precision*q)
@@ -145,13 +145,13 @@ class LaplaceKernel(Kernel):
 
     def __init__(self, X, **kwargs):
         super().__init__(X)
-        self.bandwidth = kwargs["bandwidth"]
-        self.K = torch.exp(-self.get_dX() / self.bandwidth).to(self.device)
+        self.kernel_width = kwargs["kernel_width"]
+        self.K = torch.exp(-self.get_dX() / self.kernel_width).to(self.device)
 
     @staticmethod
     def get_level_coeff_fn(data_eigvals, **kwargs):
         q = data_eigvals.sum().item()
-        s = kwargs["bandwidth"]
+        s = kwargs["kernel_width"]
         numerator = {
             0: 1,
             1: np.sqrt(2),

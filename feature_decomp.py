@@ -78,10 +78,10 @@ def lookup_monomial_idx(monomials, monomial):
 def get_eigenspectrum_comparison(X, kernel_class):
     
     S_normalized = X.cpu().numpy()/np.sum(X.cpu().numpy()) #normalization condition
-    kernel = kernel_class(X, bandwidth=1)
+    kernel = kernel_class(X, kernel_width=1)
     eigvals = kernel.eigenvals()
 
-    level_coeffs = kernel_class.get_level_coeff_fn(bandwidth=1, data_eigvals=S_normalized)
+    level_coeffs = kernel_class.get_level_coeff_fn(kernel_width=1, data_eigvals=S_normalized)
 
     top_mode_idx = 500
     fra_eigvals, monomials = generate_fra_monomials(S_normalized, top_mode_idx, level_coeffs)
