@@ -95,7 +95,7 @@ class Kernel:
          # functions.shape should be (samples, nfuncs)
          assert self.eigvals is not None, "Call eigendecomp() first"
          self.eigvals = self.eigvals.flip(0,)
-         functions /= torch.linalg.norm(functions, axis=0)
+         functions /= torch.linalg.norm(functions, axis=0).to(self.device)
          overlaps = (self.eigvecs.T @ functions)**2
          # overlap has shape (neigvecs, nfuncs)
          nfuncs = functions.shape[1]
@@ -109,7 +109,7 @@ class Kernel:
              quartiles[i, 2] = self.eigvals[cdf >= 0.75][0]
          cdfs = cdfs.flip(0,)
  
-         return ensure_numpy(overlaps.T), ensure_numpy(cdfs.T), quartiles
+         return ensure_torch(overlaps.T), ensure_torch(cdfs.T), quartiles
 
 class ExponentialKernel(Kernel):
 
