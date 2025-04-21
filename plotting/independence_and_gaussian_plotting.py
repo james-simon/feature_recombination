@@ -1,6 +1,10 @@
 # from analysis import full_analysis
 import matplotlib.pyplot as plt
+import seaborn as sns
 import numpy as np
+import torch
+from analysis.gaussianity_tests import eigvecs_to_gaussian
+from analysis.independence_tests import eigvecs_to_independent
 
 #TODO: fix kernelname later
 def plot_full_analysis(full_analysis_dict, colors=['xkcd:red', 'xkcd:orange', 'xkcd:gold', 'xkcd:green', 'xkcd:blue', "xkcd:purple", "xkcd:black"],
@@ -61,3 +65,70 @@ def plot_full_analysis(full_analysis_dict, colors=['xkcd:red', 'xkcd:orange', 'x
     axes[1, 0].set_title(f'Independentized')
     axes[1, 1].set_title(f'Guassianized, Independentized')
     plt.show()
+
+def plot_full_pca_distributions(X):
+    N, d = X.shape
+
+    U, S, Vt = torch.linalg.svd(X, full_matrices=False)
+
+    X = np.sqrt(N) * U @ torch.diag(S)
+    eigvecs_gaussian = eigvecs_to_gaussian(X, S).cpu()
+    eigvecs_independent = eigvecs_to_independent(X, bsz=X.shape[0]).cpu()
+    eigvecs_indep_gaussian = eigvecs_to_gaussian(eigvecs_independent, S).cpu()
+
+    fig, axes = plt.subplots(nrows=4, ncols=4, figsize=(12, 9), sharex=True, sharey=True)
+
+    def plot_vals(arr, i, title=None):
+        xvar = S[i].item()**2
+        Xi = arr[:, i].cpu().numpy() / np.sqrt(xvar)
+        Xi = Xi[np.abs(Xi) <= 3.1]
+        ax.hist(Xi, bins=100,
+                density=True, histtype='step', cumulative=False)
+
+        ax.set_title(title)
+        ax.set_xlim(-3, 3)
+
+    for i, ax in enumerate(axes.flatten()):
+        if i//4 == 0:
+            xvar = S[i].item()**2
+            plot_vals(X, i, f"$\lambda^\mathrm{{(PCA)}}_{{{i}}}={xvar:.4f}$")
+        elif i//4 == 1:
+            xvar = S[i%4].item()**2
+            plot_vals(eigvecs_gaussian, i%4, f"$\lambda^\mathrm{{(Gaussian)}}_{{{i}}}={xvar:.4f}$")
+        elif i//4 == 2:
+            xvar = S[i%4].item()**2
+            plot_vals(eigvecs_independent, i%4, f"$\lambda^\mathrm{{(Independent)}}_{{{i}}}={xvar:.4f}$")
+        elif i//4 == 3:
+            xvar = S[i%4].item()**2
+            plot_vals(eigvecs_indep_gaussian, i%4, f"$\lambda^\mathrm{{(IndepGauss)}}_{{{i}}}={xvar:.4f}$")
+
+    plt.tight_layout()
+    plt.show()
+
+    return X, eigvecs_gaussian, eigvecs_independent, eigvecs_indep_gaussian, Vt
+
+def plot_heatmaps(eigvecs, eigvecs_gaussian, eigvecs_independent, eigvecs_indep_gaussian, Vt):
+    
+    X_recon = eigvecs.cpu() @ Vt.cpu()
+    X_gaussian_recon = eigvecs_gaussian @ Vt.cpu().numpy()
+    X_indep_recon = eigvecs_independent @ Vt.cpu().numpy()
+    X_gaussian_indep_recon = eigvecs_indep_gaussian @ Vt.cpu().numpy()
+
+    fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+
+    sns.heatmap(X_recon, ax=axes[0, 0], cmap='viridis', xticklabels=False, yticklabels=False)
+    axes[0, 0].set_title("X_recon")
+
+    sns.heatmap(X_gaussian_recon, ax=axes[0, 1], cmap='viridis', xticklabels=False, yticklabels=False)
+    axes[0, 1].set_title("X_gaussian_recon")
+
+    sns.heatmap(X_indep_recon, ax=axes[1, 0], cmap='viridis', xticklabels=False, yticklabels=False)
+    axes[1, 0].set_title("X_indep_recon")
+
+    sns.heatmap(X_gaussian_indep_recon, ax=axes[1, 1], cmap='viridis', xticklabels=False, yticklabels=False)
+    axes[1, 1].set_title("X_gaussian_indep_recon")
+
+    plt.tight_layout()
+    plt.show()
+
+    return X_recon, X_gaussian_recon, X_indep_recon, X_gaussian_indep_recon

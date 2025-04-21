@@ -2,6 +2,8 @@ import numpy as np
 import torch as torch
 import torchvision
 import torch.nn.functional as F
+from einops import rearrange
+from utils.general import ensure_torch#, ensure_numpy
 
 def get_target_values(Phi, target_coeffs, noise_std):
     Y = None
@@ -204,6 +206,16 @@ class ImageData():
         if self.transform:
             img = self.transform(img)
         return img, label
+    
+    def get_train_test_dataset(self, n_train, n_test, dataset_name = 'cifar10', data_dir='data_dir', classes=None, **kwargs):
+        assert dataset_name in ['mnist', 'fmnist', 'cifar10', 'cifar100', 'svhn', 'imagenet32', 'imagenet64'], "Dataset not implemented"
+        X_train, y_train = self.get_dataset(n_train, get='train', centered=kwargs.get("center", False), normalize=kwargs.get("normalize", False))
+        X_test, y_test = self.get_dataset(n_test, get='test', centered=kwargs.get("center", False), normalize=kwargs.get("normalize", False))
+        X_train, y_train, X_test, y_test = [ensure_torch(t) for t in (X_train, y_train, X_test, y_test)]
+        X_train = rearrange(X_train, 'Ntrain c h w -> Ntrain (c h w)')
+        X_test = rearrange(X_test, 'Ntest c h w -> Ntest (c h w)')
+
+        return X_train, y_train, X_test, y_test
 
 # def test_imagenet(class_synsets, max_per_class=100):
 #     import requests
