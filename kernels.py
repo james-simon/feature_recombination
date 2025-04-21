@@ -11,6 +11,7 @@ class Kernel:
         self.K = None
         self.eigvals = None
         self.eigvecs = None
+        self.kernel_width = None
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu") if device is None else device
 
     def set_K(self, K):
@@ -116,7 +117,8 @@ class ExponentialKernel(Kernel):
     def __init__(self, X, **kwargs):
         super().__init__(X)
         K_lin = self.X @ self.X.T
-        self.K = torch.exp(K_lin / kwargs["kernel_width"] ** 2).to(self.device)
+        self.kernel_width = kwargs["kernel_width"]
+        self.K = torch.exp(K_lin / self.kernel_width ** 2).to(self.device)
 
     def __type__(self):
         return "ExponentialKernel"
@@ -125,7 +127,7 @@ class GaussianKernel(Kernel):
 
     def __init__(self, X, **kwargs):
         super().__init__(X)
-        dX = self.get_dX()
+        dX = self.get_dX() #comment out?
         self.kernel_width = kwargs["kernel_width"]
         self.K = torch.exp(-0.5 * (self.get_dX() / self.kernel_width) ** 2).to(self.device)
 
