@@ -59,7 +59,7 @@ def plot_full_analysis(full_analysis_dict, colors=['xkcd:red', 'xkcd:orange', 'x
     text_kwargs = {'fontsize': 12, 'transform': ax.transAxes}
     ax.text(0.05, 0.9, f'$d={plot_kwargs["d"]}$', **text_kwargs)
     ax.text(0.05, 0.825, f'$N={plot_kwargs["N"]}$', **text_kwargs)
-    ax.text(0.05, 0.75, f'$\sigma={full_analysis_dict["Normal"]["kernel"].kernel_width:.2f}$', **text_kwargs)
+    ax.text(0.05, 0.75, f'$\sigma={plot_kwargs["kernel_width"]:.2f}$', **text_kwargs)
     ax.text(0.05, 0.675, f'$d_\mathrm{{eff}}={d_eff:.2f}$', **text_kwargs)
     axes[0, 1].set_title(f'Gaussianized')
     axes[1, 0].set_title(f'Independentized')
