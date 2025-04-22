@@ -207,8 +207,7 @@ class ImageData():
             img = self.transform(img)
         return img, label
     
-    def get_train_test_dataset(self, n_train, n_test, dataset_name = 'cifar10', data_dir='data_dir', classes=None, **kwargs):
-        assert dataset_name in ['mnist', 'fmnist', 'cifar10', 'cifar100', 'svhn', 'imagenet32', 'imagenet64'], "Dataset not implemented"
+    def get_train_test_dataset(self, n_train, n_test, **kwargs):
         X_train, y_train = self.get_dataset(n_train, get='train', centered=kwargs.get("center", False), normalize=kwargs.get("normalize", False))
         X_test, y_test = self.get_dataset(n_test, get='test', centered=kwargs.get("center", False), normalize=kwargs.get("normalize", False))
         X_train, y_train, X_test, y_test = [ensure_torch(t) for t in (X_train, y_train, X_test, y_test)]

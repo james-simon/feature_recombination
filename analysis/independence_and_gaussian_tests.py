@@ -14,7 +14,7 @@ def full_analysis(X, kerneltype, kernel_width, top_fra_eigmode=3000):
 
     def get_everything(X_in, kerneltype, kernel_width, top_fra_eigmode):
         torch.cuda.empty_cache()
-        monomials, kernel, H, fra_eigvals, data_eigvals = get_standard_tools(X, kerneltype, kernel_width, top_mode_idx=top_fra_eigmode)
+        monomials, kernel, H, fra_eigvals, data_eigvals = get_standard_tools(X_in, kerneltype, kernel_width, top_mode_idx=top_fra_eigmode)
 
         eigvals, eigvecs = kernel.eigendecomp()
         pdf, cdf, quartiles = kernel.kernel_function_projection(H)

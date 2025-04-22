@@ -19,9 +19,9 @@ def plot_full_analysis(full_analysis_dict, colors=['xkcd:red', 'xkcd:orange', 'x
     # eigvals_i_cpu = eigvals_i.cpu().numpy()
     # eigvals_gi_cpu = eigvals_gi.cpu().numpy()
     quartiles = full_analysis_dict["Normal"]["quartiles"]
-    quartiles_g = full_analysis_dict["Gaussian"]["quartiles"][:, 1]
-    quartiles_i = full_analysis_dict["Independent"]["quartiles"][:, 1]
-    quartiles_gi = full_analysis_dict["Gaussian Independent"]["quartiles"][:, 1]
+    quartiles_g = full_analysis_dict["Gaussian"]["quartiles"]
+    quartiles_i = full_analysis_dict["Independent"]["quartiles"]
+    quartiles_gi = full_analysis_dict["Gaussian Independent"]["quartiles"]
     eff_eigvals = quartiles[:, 1]
     eff_eigvals_g = quartiles_g[:, 1]
     eff_eigvals_i = quartiles_i[:, 1]
@@ -94,13 +94,13 @@ def plot_full_pca_distributions(X):
             plot_vals(X, i, f"$\lambda^\mathrm{{(PCA)}}_{{{i}}}={xvar:.4f}$")
         elif i//4 == 1:
             xvar = S[i%4].item()**2
-            plot_vals(eigvecs_gaussian, i%4, f"$\lambda^\mathrm{{(Gaussian)}}_{{{i}}}={xvar:.4f}$")
+            plot_vals(eigvecs_gaussian, i%4, f"$\lambda^\mathrm{{(Gaussian)}}_{{{i%4}}}={xvar:.4f}$")
         elif i//4 == 2:
             xvar = S[i%4].item()**2
-            plot_vals(eigvecs_independent, i%4, f"$\lambda^\mathrm{{(Independent)}}_{{{i}}}={xvar:.4f}$")
+            plot_vals(eigvecs_independent, i%4, f"$\lambda^\mathrm{{(Independent)}}_{{{i%4}}}={xvar:.4f}$")
         elif i//4 == 3:
             xvar = S[i%4].item()**2
-            plot_vals(eigvecs_indep_gaussian, i%4, f"$\lambda^\mathrm{{(IndepGauss)}}_{{{i}}}={xvar:.4f}$")
+            plot_vals(eigvecs_indep_gaussian, i%4, f"$\lambda^\mathrm{{(IndepGauss)}}_{{{i%4}}}={xvar:.4f}$")
 
     plt.tight_layout()
     plt.show()
