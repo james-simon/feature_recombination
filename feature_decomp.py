@@ -37,7 +37,21 @@ def get_fra_eigval(data_eigvals, monomial, eval_level_coeff):
 
 
 def generate_fra_monomials(data_covar_eigvals, num_monomials, eval_level_coeff):
-    assert isinstance(num_monomials, int) and num_monomials > 0, "num_monomials must be positive integer"
+    """
+    Generates monomials through a greedy search.
+
+    Args:
+        data_covar_eigvals (torch.Tensor): Eigenvalues of the covariance matrix.
+        num_monomials (int): Number of monomials to generate.
+        eval_level_coeff (function): Function to evaluate level coefficients.
+
+    Returns:
+        A tuple containing:
+        - fra_eigvals (np.ndarray): Array of fractional eigenvalues.
+        - monomials (list): List of generated monomials.
+    """
+    print(f"num_monomials being forced to a positive integer, currently {type(num_monomials)}, {num_monomials}") if not(isinstance(num_monomials, int) and num_monomials > 0) else None
+    num_monomials = abs(int(num_monomials)) if not(type(num_monomials) == int and num_monomials > 0) else num_monomials
     d = len(data_covar_eigvals)
 
     monomials = [Monomial({})]
