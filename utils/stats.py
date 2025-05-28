@@ -3,14 +3,19 @@ import numpy as np
 from .hermite import get_matrix_hermites
 from feature_decomp import generate_fra_monomials
 
+def get_data_eigvals(X):
+    N, _ = X.shape
+    S = torch.linalg.svdvals(X)
+    # to make norm(x)~1 on average (f)
+    X *= torch.sqrt(N / (S**2).sum())
+    data_eigvals = S**2 / (S**2).sum()
+    return data_eigvals
+
 def get_standard_tools(X, kerneltype, kernel_width, top_mode_idx = 3000, data_eigvals = None):
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    N, _ = X.shape
+    
     if data_eigvals is None:
-        S = torch.linalg.svdvals(X)
-        # to make norm(x)~1 on average (f)
-        X *= torch.sqrt(N / (S**2).sum())
-        data_eigvals = S**2 / (S**2).sum()
+        data_eigvals = get_data_eigvals(X)
 
     kernel = kerneltype(X, kernel_width=kernel_width)
     eval_level_coeff = kerneltype.get_level_coeff_fn(kernel_width=kernel_width, data_eigvals=data_eigvals)
