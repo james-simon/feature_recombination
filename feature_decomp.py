@@ -83,6 +83,23 @@ def generate_fra_monomials(data_covar_eigvals, num_monomials, eval_level_coeff):
     return np.array(fra_eigvals), monomials
 
 
+def fra_terms_from_monomials(monomials, data_eigvals, eval_level_coeff):
+    """
+    Computes the fractional eigenvalues for a list of monomials.
+
+    Args:
+        monomials (list): List of Monomial objects.
+        data_eigvals (torch.Tensor): Eigenvalues of the covariance matrix.
+        eval_level_coeff (function): Function to evaluate level coefficients.
+
+    Returns:
+        np.ndarray: Array of fractional eigenvalues corresponding to the monomials.
+    """
+    fra_eigvals = np.zeros(len(monomials))
+    for i, monomial in enumerate(monomials):
+        fra_eigvals[i] = get_fra_eigval(data_eigvals, monomial, eval_level_coeff)
+    return fra_eigvals
+
 def lookup_monomial_idx(monomials, monomial):
     for i, mon in enumerate(monomials):
         if mon == monomial:
