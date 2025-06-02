@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from utils.general import ensure_torch
+from utils import ensure_torch
 from utils.stats import get_standard_tools
 
 def get_vtilde(X_train, y_train, top_fra_eigmode=None, method = "LSTSQ", kerneltype="gaussian", kernel_width=1):

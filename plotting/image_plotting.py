@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
-from utils.general import ensure_numpy
+from utils import ensure_numpy
 
 def show_img(img, grayscale=True, vextent=None, ax=None, normalize=True):
     nchan = 1 if grayscale else 3

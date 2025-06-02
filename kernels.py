@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 import math
-from utils.general import ensure_torch, ensure_numpy
+from utils import ensure_torch, ensure_numpy
 
 
 class Kernel:

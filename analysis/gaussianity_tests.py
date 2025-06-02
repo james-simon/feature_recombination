@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.stats import norm
-from utils.general import ensure_numpy, ensure_torch
+from utils import ensure_numpy, ensure_torch
 from utils.stats import grab_eigval_distributions
 
 def get_emperical_pdf(X, num_bins=100, tol=1e-3):
