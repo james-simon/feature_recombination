@@ -3,25 +3,6 @@ import torch
 
 from itertools import combinations_with_replacement
 
-def ensure_numpy(x):
-    """Convert torch.Tensor to numpy array if necessary."""
-    if isinstance(x, torch.Tensor):
-        return x.detach().cpu().numpy()
-    return x
-
-def ensure_torch(x, dtype=torch.float64):
-    """Convert numpy array to torch.Tensor if needed, and ensure correct dtype."""
-
-    DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    if isinstance(x, np.ndarray):
-        return torch.tensor(x, dtype=dtype).to(DEVICE)
-    elif isinstance(x, torch.Tensor):
-        if x.device != DEVICE:
-            x = x.to(DEVICE)
-        if x.dtype != dtype:
-            x = x.to(dtype)
-    return x
 
 def rms(x):
     if isinstance(x, np.ndarray):
@@ -31,11 +12,13 @@ def rms(x):
     else:
         raise TypeError("Input must be a numpy array or a torch tensor.")
 
+
 def cos_sim(v1:np.ndarray, v2:np.ndarray) -> float:
   """
   Returns the cosine similarity between two vectors.
   """
   return np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
+
 
 def shuffle_indices(*tensors):
     """
@@ -92,6 +75,7 @@ def shuffle_indices(*tensors):
         shuffled_tensors.append(shuffled_tensor)
 
     return tuple(shuffled_tensors)
+
 
 def element_products(arr, orders):
     """

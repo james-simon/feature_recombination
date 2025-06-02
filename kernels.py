@@ -1,21 +1,20 @@
 import numpy as np
 import torch
-from utils.general import ensure_torch, ensure_numpy
+import math
+from utils import ensure_torch, ensure_numpy
 
 
 class Kernel:
 
-    def __init__(self, X, device=None):
+    def __init__(self, X):
         assert X.ndim == 2
         self.X = ensure_torch(X)
         self.K = None
         self.eigvals = None
         self.eigvecs = None
-        self.kernel_width = None
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu") if device is None else device
 
     def set_K(self, K):
-        self.K = K.to(self.device) #todevice might not be needed after ensure_torch update
+        self.K = K
         self.eigvals = None
         self.eigvecs = None
 
@@ -95,9 +94,9 @@ class Kernel:
     def kernel_function_projection(self, functions):
          # functions.shape should be (samples, nfuncs)
          assert self.eigvals is not None, "Call eigendecomp() first"
-         self.eigvals = ensure_torch(self.eigvals.flip(0,))
+         functions = ensure_torch(functions)
          functions /= torch.linalg.norm(functions, axis=0)
-         overlaps = (self.eigvecs.T @ ensure_torch(functions))**2
+         overlaps = (self.eigvecs.T @ functions)**2
          # overlap has shape (neigvecs, nfuncs)
          nfuncs = functions.shape[1]
          cdfs = overlaps.flip(0,).cumsum(axis=0)
@@ -110,7 +109,8 @@ class Kernel:
              quartiles[i, 2] = self.eigvals[cdf >= 0.75][0]
          cdfs = cdfs.flip(0,)
  
-         return ensure_torch(overlaps.T), ensure_torch(cdfs.T), quartiles
+         return ensure_numpy(overlaps.T), ensure_numpy(cdfs.T), quartiles
+
 
 class ExponentialKernel(Kernel):
 
@@ -118,37 +118,66 @@ class ExponentialKernel(Kernel):
         super().__init__(X)
         K_lin = self.X @ self.X.T
         self.kernel_width = kwargs["kernel_width"]
-        self.K = torch.exp(K_lin / self.kernel_width ** 2).to(self.device)
-
-    def __type__(self):
-        return "ExponentialKernel"
-
-class GaussianKernel(Kernel):
-
-    def __init__(self, X, **kwargs):
-        super().__init__(X)
-        dX = self.get_dX() #comment out?
-        self.kernel_width = kwargs["kernel_width"]
-        self.K = torch.exp(-0.5 * (self.get_dX() / self.kernel_width) ** 2).to(self.device)
+        self.K = torch.exp(K_lin / (self.kernel_width ** 2))
 
     @staticmethod
     def get_level_coeff_fn(data_eigvals, **kwargs):
         q = data_eigvals.sum().item()
         precision = 1 / kwargs["kernel_width"]**2
-        norm = kwargs["avg_norm"] if "avg_norm" in kwargs else 1
         def eval_level_coeff(k):
-            return (norm*precision)**k * np.exp(-precision*q)
+            return (precision)**k
         return eval_level_coeff
 
-    def __type__(self):
-         return "GaussianKernel"
+
+class DotProdKernel(Kernel):
+
+    def __init__(self, X, **kwargs):
+        super().__init__(X)
+        K_lin = self.X @ self.X.T
+        self.kernel_width = kwargs["kernel_width"]
+        self.coeffs = kwargs["coeffs"]
+        K_lin /= (self.kernel_width ** 2)
+        for k, coeff in enumerate(self.coeffs):
+            term = (coeff / math.factorial(k)) * K_lin**k
+            if k == 0:
+                self.K = term
+            else:
+                self.K += term
+
+    @staticmethod
+    def get_level_coeff_fn(data_eigvals, **kwargs):
+        q = data_eigvals.sum().item()
+        precision = 1 / kwargs["kernel_width"]**2
+        coeffs = kwargs["coeffs"]
+        def eval_level_coeff(k):
+            if k >= len(coeffs):
+                return 0
+            return coeffs[k] * (precision)**k
+        return eval_level_coeff
+
+
+class GaussianKernel(Kernel):
+
+    def __init__(self, X, **kwargs):
+        super().__init__(X)
+        self.kernel_width = kwargs["kernel_width"]
+        self.K = torch.exp(-0.5 * (self.get_dX() / self.kernel_width) ** 2)
+
+    @staticmethod
+    def get_level_coeff_fn(data_eigvals, **kwargs):
+        q = data_eigvals.sum().item()
+        precision = 1 / kwargs["kernel_width"]**2
+        def eval_level_coeff(k):
+            return (precision)**k * np.exp(-precision*q)
+        return eval_level_coeff
+
 
 class LaplaceKernel(Kernel):
 
     def __init__(self, X, **kwargs):
         super().__init__(X)
         self.kernel_width = kwargs["kernel_width"]
-        self.K = torch.exp(-self.get_dX() / self.kernel_width).to(self.device)
+        self.K = torch.exp(-self.get_dX() / self.kernel_width)
 
     @staticmethod
     def get_level_coeff_fn(data_eigvals, **kwargs):
@@ -185,8 +214,6 @@ class LaplaceKernel(Kernel):
             return f * np.exp(-np.sqrt(2*q)/s)
         return eval_level_coeff
 
-    def __type__(self):
-         return "LaplaceKernel"
 
 class ReluNNGPKernel(Kernel):
 
@@ -197,7 +224,7 @@ class ReluNNGPKernel(Kernel):
         d = self.X.shape[1]
         theta = torch.acos((self.X @ self.X.T / K_norm).clip(-1, 1))
         angular = torch.sin(theta) + (np.pi - theta)*torch.cos(theta)
-        self.K = (1/(2*np.pi) * K_norm * angular).to(self.device)
+        self.K = 1/(2*np.pi) * K_norm * angular
 
     @staticmethod
     def get_level_coeff_fn(data_eigvals, **kwargs):
@@ -221,9 +248,6 @@ class ReluNNGPKernel(Kernel):
             f = numerator[k] / q**k
             return f * q / (2*np.pi)
         return eval_level_coeff
-    
-    def __type__(self):
-         return "ReLUNNGPKernel"
 
 
 class RandomFeatureKernel(Kernel):
@@ -243,6 +267,3 @@ class RandomFeatureKernel(Kernel):
         if self.nonlinearity:
             features = self.nonlinearity(features)
         self.set_K(features @ features.T)
-
-    def __type__(self):
-         return "RFKernel"

@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from .hermite import get_matrix_hermites
+from utils import get_matrix_hermites
 from feature_decomp import generate_fra_monomials
 
 def get_data_eigvals(X):

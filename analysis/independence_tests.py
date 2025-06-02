@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 from utils.stats import grab_eigval_distributions
-from utils.general import ensure_torch
+from utils import ensure_torch
 
 def eigvecs_to_independent(eigenvectors, bsz=None, rng = None, to_torch=True):
     rng = np.random.default_rng() if rng is None else rng

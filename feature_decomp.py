@@ -1,6 +1,5 @@
 import heapq
 import numpy as np
-# import torch
 
 class Monomial(dict):
 
@@ -36,7 +35,7 @@ def get_fra_eigval(data_eigvals, monomial, eval_level_coeff):
     return fra_eigval
 
 
-def generate_fra_monomials(data_covar_eigvals, num_monomials, eval_level_coeff):
+def generate_fra_monomials(data_covar_eigvals, num_monomials, eval_level_coeff, kmax=None):
     """
     Generates monomials through a greedy search.
 
@@ -44,14 +43,16 @@ def generate_fra_monomials(data_covar_eigvals, num_monomials, eval_level_coeff):
         data_covar_eigvals (torch.Tensor): Eigenvalues of the covariance matrix.
         num_monomials (int): Number of monomials to generate.
         eval_level_coeff (function): Function to evaluate level coefficients.
+        kmax (int): Search monomials up to order k
 
     Returns:
         A tuple containing:
-        - fra_eigvals (np.ndarray): Array of fractional eigenvalues.
+        - fra_eigvals (np.ndarray): Array of fra eigenvalues.
         - monomials (list): List of generated monomials.
     """
-    print(f"num_monomials being forced to a positive integer, currently {type(num_monomials)}, {num_monomials}") if not(isinstance(num_monomials, int) and num_monomials > 0) else None
-    num_monomials = abs(int(num_monomials)) if not(type(num_monomials) == int and num_monomials > 0) else num_monomials
+    if not(isinstance(num_monomials, int) and num_monomials > 0):    
+        print(f"num_monomials being forced to a positive integer, currently {type(num_monomials)}, {num_monomials}")
+        num_monomials = abs(int(num_monomials))
     d = len(data_covar_eigvals)
 
     monomials = [Monomial({})]
@@ -75,10 +76,15 @@ def generate_fra_monomials(data_covar_eigvals, num_monomials, eval_level_coeff):
             fra_eigval = get_fra_eigval(data_covar_eigvals, left_monomial, eval_level_coeff)
             heapq.heappush(pq, (-fra_eigval, left_monomial))
 
-        right_monomial = monomial.copy()
-        right_monomial[last_idx] += 1
-        fra_eigval = get_fra_eigval(data_covar_eigvals, right_monomial, eval_level_coeff)
-        heapq.heappush(pq, (-fra_eigval, right_monomial))
+        if kmax is None or monomial.degree() < kmax:
+            right_monomial = monomial.copy()
+            right_monomial[last_idx] += 1
+            if eval_level_coeff(right_monomial.degree()) < 1e-12:
+                right_monomial[last_idx] += 1
+            if right_monomial.degree() > kmax:
+                continue
+            fra_eigval = get_fra_eigval(data_covar_eigvals, right_monomial, eval_level_coeff)
+            heapq.heappush(pq, (-fra_eigval, right_monomial))
 
     return np.array(fra_eigvals), monomials
 
@@ -100,22 +106,9 @@ def fra_terms_from_monomials(monomials, data_eigvals, eval_level_coeff):
         fra_eigvals[i] = get_fra_eigval(data_eigvals, monomial, eval_level_coeff)
     return fra_eigvals
 
+
 def lookup_monomial_idx(monomials, monomial):
     for i, mon in enumerate(monomials):
         if mon == monomial:
             return i
     return None
-
-
-# def get_eigenspectrum_comparison(X, kernel_class):
-#     #not sure what this is being used for; update
-#     S_normalized = X/torch.sum(X) #normalization condition
-#     kernel = kernel_class(X, kernel_width=1)
-#     eigvals = kernel.eigenvals()
-
-#     level_coeffs = kernel_class.get_level_coeff_fn(kernel_width=1, data_eigvals=S_normalized)
-
-#     top_mode_idx = 500
-#     fra_eigvals, monomials = generate_fra_monomials(S_normalized, top_mode_idx, level_coeffs)
-#     degrees = [monomial.degree() for monomial in monomials]
-#     return None

@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from utils.general import ensure_torch
+from utils import ensure_torch
 from utils.stats import get_standard_tools
 from utils.hermite import get_matrix_hermites
 from data import get_train_dataset
