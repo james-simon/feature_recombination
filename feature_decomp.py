@@ -35,7 +35,7 @@ def get_fra_eigval(data_eigvals, monomial, eval_level_coeff):
     return fra_eigval
 
 
-def generate_fra_monomials(data_covar_eigvals, num_monomials, eval_level_coeff, kmax=None):
+def generate_fra_monomials(data_covar_eigvals, num_monomials, eval_level_coeff, kmax=20):
     """
     Generates monomials through a greedy search.
 
@@ -76,7 +76,7 @@ def generate_fra_monomials(data_covar_eigvals, num_monomials, eval_level_coeff, 
             fra_eigval = get_fra_eigval(data_covar_eigvals, left_monomial, eval_level_coeff)
             heapq.heappush(pq, (-fra_eigval, left_monomial))
 
-        if kmax is None or monomial.degree() < kmax:
+        if monomial.degree() < kmax:
             right_monomial = monomial.copy()
             right_monomial[last_idx] += 1
             if eval_level_coeff(right_monomial.degree()) < 1e-12:
