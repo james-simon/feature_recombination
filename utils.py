@@ -1,29 +1,28 @@
-import scipy as sp
 import numpy as np
 import torch
 import math
 
-from .general import ensure_torch
 
-def hermite(k, x):
-    """Compute the k-th probabilist's Hermite polynomial at x, normalized to have unit norm against the standard normal distribution."""
+def ensure_numpy(x):
+    """Convert torch.Tensor to numpy array if necessary."""
+    if isinstance(x, torch.Tensor):
+        return x.detach().cpu().numpy()
+    return x
 
-    return sp.special.hermite(k)(x / 2 ** .5) * 2 ** (-k / 2) / sp.special.factorial(k) ** .5
 
-def hermite_product(X, exponents):
-  n, d = X.shape
+def ensure_torch(x, dtype=torch.float64):
+    """Convert numpy array to torch.Tensor if needed, and ensure correct dtype."""
 
-  fn_vals = np.ones(n)
-  for idx in exponents:
-    fn_vals *= hermite(exponents[idx], X[:, idx])
-
-  return fn_vals
+    DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if not isinstance(x, torch.Tensor):
+        return torch.tensor(x, dtype=dtype).to(DEVICE)
+    return x.to(dtype).to(DEVICE)
 
 
 def get_matrix_hermites(X, monomials):
     N, _ = X.shape
-    U, S, _ = torch.linalg.svd(X, full_matrices=False)
-    X_norm = ensure_torch(np.sqrt(N) * U)
+    U, _, _ = torch.linalg.svd(X, full_matrices=False)
+    X_norm = np.sqrt(N) * U
 
     hermites = {
         1: lambda x: x,
@@ -38,11 +37,11 @@ def get_matrix_hermites(X, monomials):
         10: lambda x: x**10 - 45*x**8 + 630*x**6 - 3150*x**4 + 4725*x**2 - 945,
     }
 
-    H = torch.zeros((N, len(monomials)))
+    H = ensure_torch(torch.zeros((N, len(monomials))))
     for i, monomial in enumerate(monomials):
         h = ensure_torch(torch.ones(N) / np.sqrt(N))
         for d_i, exp in monomial.items():
-            Z = ensure_torch(np.sqrt(math.factorial(exp)))
-            h *= ensure_torch(hermites[exp](X_norm[:, d_i])) / Z #ensure_torch prob not required?
+            Z = np.sqrt(math.factorial(exp))
+            h *= hermites[exp](X_norm[:, d_i]) / Z
         H[:, i] = h
     return H
