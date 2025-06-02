@@ -1,7 +1,7 @@
 import torch
 from .gaussianity_tests import gaussianize_data
 from .independence_tests import independentize_data
-from utils.stats import get_standard_tools
+from utils import get_standard_tools
 
 def full_analysis(X, kerneltype, kernel_width, top_fra_eigmode=3000):
     _, S, _ = torch.linalg.svd(X, full_matrices=False)

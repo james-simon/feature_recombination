@@ -2,9 +2,8 @@ from itertools import product
 import numpy as np
 import torch
 
-from utils.general import ensure_torch
+from utils import ensure_torch, get_structure
 # from utils.hermite import generate_fra_monomials, get_matrix_hermites
-from utils.stats import get_structure
 
 def generate_configs(params):
     # Define the order of keys

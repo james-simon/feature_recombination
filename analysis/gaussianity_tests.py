@@ -1,7 +1,6 @@
 import numpy as np
 from scipy.stats import norm
-from utils import ensure_numpy, ensure_torch
-from utils.stats import grab_eigval_distributions
+from utils import ensure_numpy, ensure_torch, grab_eigval_distributions
 
 def get_emperical_pdf(X, num_bins=100, tol=1e-3):
     counts, bin_edges = np.histogram(X, bins=num_bins, density=True)
@@ -46,7 +45,7 @@ def eigvecs_to_gaussian(X, S=None, to_torch=True):
             gaussian_data *= S.reshape(1, -1)  # broadcast to columns
     return ensure_torch(gaussian_data) if to_torch else gaussian_data
 
-def gaussianize_data(X, S=None):
+def gaussianize_data(X, S=None, Vt=None):
     eigenvectors, Vt = grab_eigval_distributions(X)
     gaussian_data = eigvecs_to_gaussian(eigenvectors, S)
     return gaussian_data @ Vt

@@ -1,8 +1,6 @@
 import numpy as np
 import torch
-from utils import ensure_torch
-from utils.stats import get_standard_tools
-from utils.hermite import get_matrix_hermites
+from utils import ensure_torch, get_matrix_hermites, get_standard_tools
 from data import get_train_dataset
 
 def get_eigenfunctions(monomials, n_train=50000, dataset_name="cifar10", classes=None, rng=np.random.default_rng(1)):
