@@ -91,7 +91,7 @@ def generate_fra_monomials(data_covar_eigvals, num_monomials, eval_level_coeff, 
 
 def fra_terms_from_monomials(monomials, data_eigvals, eval_level_coeff):
     """
-    Computes the fractional eigenvalues for a list of monomials.
+    Computes the eigenvalues for a list of monomials.
 
     Args:
         monomials (list): List of Monomial objects.
@@ -99,7 +99,7 @@ def fra_terms_from_monomials(monomials, data_eigvals, eval_level_coeff):
         eval_level_coeff (function): Function to evaluate level coefficients.
 
     Returns:
-        np.ndarray: Array of fractional eigenvalues corresponding to the monomials.
+        np.ndarray: Array of eigenvalues corresponding to the monomials.
     """
     fra_eigvals = np.zeros(len(monomials))
     for i, monomial in enumerate(monomials):
