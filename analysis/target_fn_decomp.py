@@ -1,17 +1,12 @@
 import numpy as np
 import torch
+from itertools import product
+
 from utils import ensure_torch, get_matrix_hermites, get_standard_tools, ensure_numpy
-# from data import get_train_dataset
-import matplotlib.pyplot as plt
 from data import get_synthetic_X
 from feature_decomp import generate_fra_monomials
 from kernels import GaussianKernel
-
-#get_train_dataset not defined yet?
-# def get_eigenfunctions(monomials, n_train=50000, dataset_name="cifar10", classes=None, rng=np.random.default_rng(1)):
-#     X_train, y = get_train_dataset(n_train, dataset_name, classes=classes, rng=rng, center=True, normalize=False, binarize=True)
-#     H = get_matrix_hermites(X_train, monomials)
-#     return ensure_torch(H)
+from utils import find_iterables, find_statics
 
 def get_vtilde(H, y, method = "LSTSQ", **kwargs):
     """
@@ -102,7 +97,79 @@ def get_synthetic_dataset(X=None, data_eigvals=None, ytype="Gaussian", d=500, N=
     y = ensure_torch(H) @ v_true + ensure_torch(torch.normal(0., noise_size, (H.shape[0],)))
     return X, y, H, monomials, fra_eigvals, v_true
 
-def get_y_recon(H, v_tilde, y, classes):
+def sample_v_tilde(H=None, y=None, top_fra_eigmode=None, n_train=10, num_trials=20, method="LSTSQ", normalized=True, verbose_every=5, **kwargs):
+    """
+    Samples v_tilde by randomly selecting n_train samples from H and y.
+    """
+    Nmax = H.shape[0]
+    norm_amount = np.sqrt(n_train) if normalized else 1
+    v_tildes = torch.zeros(top_fra_eigmode, num_trials)
+    for trial_idx in range(num_trials):
+        if verbose_every is not None and not trial_idx%verbose_every:
+            print(f"Starting run {trial_idx}")
+        random_sampling = np.random.choice(Nmax, size=n_train, replace=False)
+        v_tilde = get_vtilde(H[random_sampling, :top_fra_eigmode], y[random_sampling]/norm_amount, method=method, **kwargs)
+        v_tildes[:, trial_idx] = v_tilde
+    return v_tildes
+
+def v_tilde_experiment(input_dict):
+    #assumes all v_tildes will be similarly shaped
+    iterable_dict = find_iterables(input_dict)
+    static_dict = find_statics(input_dict)
+    keys = list(iterable_dict.keys())
+    values = list(iterable_dict.values())
+    shapes = [len(v) for v in values]
+
+    num_trials = static_dict.get("num_trials", iterable_dict.get("num_trials")) #should usually be in num_trials
+    P = int(static_dict.get("top_fra_eigmode", np.min(iterable_dict.get("top_fra_eigmodes"))))
+
+    all_v_tildes = torch.zeros(*shapes, P, num_trials)
+
+    #check if only one dataset needs to be made and everything can be based off that
+    #or if we need to remake the dataset every time
+    do_multiple_sampling = np.any(key in keys for key in ["d", "n_train", "offset", "alpha", "cutoff_mode", "noise_size", "normalized"])
+    if not do_multiple_sampling or "H" not in static_dict:
+        X, y, H, monomials, fra_eigvals, v_true = get_synthetic_dataset(**static_dict)
+        static_dict.update(dict(X=X, y=y, H=H, monomials=monomials, fra_eigvals=fra_eigvals, v_true=v_true))
+
+    for idx, combo in enumerate(product(*values)):
+        combo_dict = dict(zip(keys, combo))
+        all_args = {**static_dict, **combo_dict}
+        print(f"Starting {combo_dict}")
+
+        if do_multiple_sampling:
+            print(f"Resampling")
+            all_args.update({"X": None})
+            del all_args["H"], all_args["fra_eigvals"]
+            X, y, H, monomials, fra_eigvals, v_true = get_synthetic_dataset(**all_args)
+            all_args.update(dict(X=X, y=y, H=H, monomials=monomials, fra_eigvals=fra_eigvals, v_true=v_true))
+
+        out = sample_v_tilde(**all_args)
+
+        multi_idx = np.unravel_index(idx, shapes)
+        all_v_tildes[multi_idx] = out
+    return all_v_tildes
+
+#explicit experiments
+
+def v_tilde_p_experiment(top_fra_eigmodes, H, y, n_train, num_trials=20, minmode=True, method="LSTSQ", normalized=True, verbose_every=5, ridge=None):
+    minval = np.min(top_fra_eigmodes)
+
+    all_v_tildes = [] if not minmode else torch.zeros(len(top_fra_eigmodes), minval, num_trials)
+    for i, top_fra_eigmode in enumerate(top_fra_eigmodes):
+        top_fra_eigmode = int(top_fra_eigmode) #usually a np.int which prints exception
+        print(f"Starting P={top_fra_eigmode}")
+        v_tildes = sample_v_tilde(H, y, top_fra_eigmode, n_train, num_trials, normalized=normalized, verbose_every=5, method=method, ridge=None)
+        if not minmode:
+            all_v_tildes.append(v_tildes)
+        else:
+            all_v_tildes[i] = v_tildes[:minval]
+    if minmode:
+        return all_v_tildes.squeeze()
+    return all_v_tildes
+
+#not super useful
+def get_y_recon(H, v_tilde, y,):
     y_pred = (ensure_torch(H) @ v_tilde).squeeze()
     # err = ((y-y_pred)**2).mean()
     if y.ndim >= 2:
@@ -112,166 +179,3 @@ def get_y_recon(H, v_tilde, y, classes):
 
     y_pred_sorted = [y_pred_np[y_non_onehot_np == i] for i in np.unique(y_non_onehot_np)]
     return y_pred_sorted
-
-def sample_v_tilde(top_fra_eigmodes, H, y, n_train, num_trials=20, minmode=True, method="LSTSQ", normalized=True, verbose_every=5, ridge=None):
-    Nmax = H.shape[0]
-    minval = np.min(top_fra_eigmodes)
-    norm_amount = np.sqrt(n_train) if normalized else 1
-    
-    all_v_tildes = [] if not minmode else torch.zeros(len(top_fra_eigmodes), minval, num_trials)
-    for i, top_fra_eigmode in enumerate(top_fra_eigmodes):
-        top_fra_eigmode = int(top_fra_eigmode) #usually a np.int which prints exception
-        print(f"Starting P={top_fra_eigmode}")
-        v_tildes = torch.zeros(top_fra_eigmode, num_trials) if not minmode else torch.zeros(minval, num_trials)
-        for trial_idx in range(num_trials):
-            if verbose_every is not None and not trial_idx%verbose_every:
-                print(f"Starting run {trial_idx}")
-            random_sampling = np.random.choice(Nmax, size=n_train, replace=False)
-            v_tilde = get_vtilde(H[random_sampling, :top_fra_eigmode], y[random_sampling]/norm_amount, method=method, ridge=ridge)
-            v_tildes[:, trial_idx] = v_tilde[:minval] if minmode else v_tilde
-        if not minmode:
-            all_v_tildes.append(v_tildes) 
-        else:
-            all_v_tildes[i] = v_tildes
-    return all_v_tildes.squeeze()
-
-#plotting stuff
-
-def plot_v_tildes(all_v_tildes, monomials, axes=None, fig=None, titles=None, suptitle="", avg_mode="squared", error_mode="quartiles", colors = None, errorbars=True,
-                  **kwargs):
-    """
-    If axes/fig is None, assumes one plot is wanted; uses plt instead of axes
-    """
-    def _get_avg_vtilde(v_tildes):
-        avg_v = transform_fn(v_tildes).mean(axis=1)
-        if error_mode == "quartiles":
-            p25 = np.percentile(transform_fn(v_tildes), 25, axis=1)
-            p75 = np.percentile(transform_fn(v_tildes), 75, axis=1)
-            err_v = np.vstack((ensure_numpy(avg_v) - p25, p75 - ensure_numpy(avg_v))).T
-        else:
-            err_v = transform_fn(v_tildes).std(axis=1)
-        
-        num_terms = len(avg_v)
-        indices = np.linspace(1, num_terms+1, num_terms)
-        degrees = np.array([monomial.degree() for monomial in monomials[:num_terms]])
-        return avg_v, err_v, indices, degrees
-    
-    assert avg_mode in ["squared", "abs"], "Averaging method not found"
-    assert error_mode in ["quartiles", "std"], "Error method not found"
-    print("Found more v_tildes than axes") if axes is not None and len(all_v_tildes) != len(axes.flatten()) else None
-    
-    colors = colors if colors is not None else ['xkcd:red', 'xkcd:orange', 'xkcd:gold', 'xkcd:green', 'xkcd:blue', "xkcd:purple", "xkcd:black"]
-    titles = titles if titles is not None else len(axes.flatten())*[""]
-    
-    transform_fn = lambda x: np.abs(x) if avg_mode == "abs" else x**2
-    
-    ylabhelperavg = "AbsVal of" if avg_mode == "abs" else "Squared"
-    ylabhelpershowing = "$|\\tilde{{v}}_i|$" if avg_mode == "abs" else "$\\tilde{{v}}_i^2$"
-    ylabhelpervar = "" if errorbars == False else "w/ Squared Error" if error_mode == "squared" else "w/ StdDev Error"
-    
-    show_values = kwargs.get("show_values", None)
-
-    if axes is not None:
-        for i, ax in enumerate(axes.flatten()):
-            text_kwargs = {'fontsize': 12, 'transform': ax.transAxes}
-        
-            v_tildes = all_v_tildes[i]
-            avg_v, err_v, indices, degrees = _get_avg_vtilde(v_tildes)
-            for degree in np.unique(degrees):
-                idxs = np.where(np.array(degrees) == degree)[0]
-                if errorbars:
-                    ax.errorbar(indices[idxs], avg_v[idxs], yerr=np.abs(err_v[idxs].T), color=colors[degree%7], linestyle='', marker='.', alpha=1/(degree+1),)
-                else:
-                    ax.scatter(indices[idxs], avg_v[idxs], color=colors[degree%7], linestyle='', marker='.', alpha=1/(degree+1),)
-            v_tilde_sum = transform_fn(v_tildes).mean(axis=-1).sum(axis=-1)
-            if show_values is not None and np.any([value < len(avg_v) for value in show_values]):
-                show_values = np.array([value for value in show_values if value < len(avg_v)])
-                if errorbars:
-                    ax.errorbar(indices[show_values], avg_v[show_values], yerr=np.abs(err_v[show_values].T), color="xkcd:black", linestyle='', marker='.', alpha=1,)
-                else:
-                    ax.scatter(indices[show_values], avg_v[show_values], color="xkcd:black", linestyle='', marker='.', alpha=1,)
-                formatted_vtilde_vals = " ".join(f"{transform_fn(v_tildes).mean(axis=-1)[show_value].cpu().item()/v_tilde_sum:.2e}" for show_value in show_values)
-                ax.text(0.05, 0.825, f'$\\tilde{{v}}_{{{show_values}}}^2/\\Sigma\\tilde{{v}}^2 =$'+formatted_vtilde_vals, **text_kwargs)
-
-            ax.set_title(titles[i])
-            ax.set_xscale("log")
-            ax.set_yscale("log")
-            ax.text(0.05, 0.9, f'$\\Sigma \\tilde{{v}}^2 = {v_tilde_sum:.2e}$', **text_kwargs)
-
-        fig.suptitle(suptitle, fontsize=24)
-        fig.supxlabel("Index", fontsize=18)
-        fig.supylabel(f"Average of {ylabhelperavg} Eigencoeff {ylabhelpershowing} {ylabhelpervar}", fontsize=18)
-    
-    else:
-        avg_v, err_v, indices, degrees = _get_avg_vtilde(all_v_tildes)
-        for degree in np.unique(degrees):
-            idxs = np.where(np.array(degrees) == degree)[0]
-            if errorbars:
-                plt.errorbar(indices[idxs], avg_v[idxs], yerr=np.abs(err_v[idxs].T), color=colors[degree%7], linestyle='', marker='.', alpha=1/(degree+1),)
-            else:
-                plt.scatter(indices[idxs], avg_v[idxs], color=colors[degree%7], linestyle='', marker='.', alpha=1/(degree+1),)
-            
-        plt.title(titles)
-        plt.xscale("log")
-        plt.yscale("log")
-
-        plt.xlabel("Index")
-        plt.ylabel(f"Average of {ylabhelperavg} Eigencoeff {ylabhelpershowing} {ylabhelpervar}")
-    plt.show()
-
-def plot_v_tilde_variances_1(all_v_tildes, degrees, colors=None):
-    num_terms = all_v_tildes.shape[1]
-    indices = np.linspace(1, num_terms+1, num_terms)
-    for i in range(len(all_v_tildes)):
-        v_tilde = all_v_tildes[i]
-        std_v = (v_tilde**2).std(axis=1)
-        for degree in np.unique(degrees):
-            idxs = np.where(np.array(degrees) == degree)[0]
-            plt.scatter(indices[idxs], std_v[idxs], color=colors[degree%7], linestyle='', marker='.', alpha=(i+1)/len(all_v_tildes),)
-        
-    plt.xlabel("Indices")
-    plt.ylabel(f"Variance of Eigencoeff Squared $\\tilde{{v}}_i^2$")
-    plt.yscale("log")
-    plt.title("Opacity ~ N/P (Opaque = Low N/P)")
-    plt.show()
-
-def plot_v_tilde_variances_2(all_v_tildes, degrees, PoverNfracs=None, colors=None):
-    all_std_v = (all_v_tildes**2).std(axis=-1)
-    for degree in np.unique(degrees):
-        idxs = np.where(np.array(degrees) == degree)[0]
-        plt.plot(np.pow(PoverNfracs, -1), all_std_v[:, idxs].mean(axis=1), color=colors[degree%7], alpha=1, label=f"Degree {degree}")#(degree+1)/6,)
-        if all_std_v[:, idxs].squeeze().ndim != 1:
-            plt.fill_between(np.pow(PoverNfracs, -1), all_std_v[:, idxs].mean(axis=1)-all_std_v[:, idxs].std(axis=1), all_std_v[:, idxs].mean(axis=1)+all_std_v[:, idxs].std(axis=1),
-                                color=colors[degree%7], alpha=((degree+1)/np.max(degrees))*0.4)
-        
-    plt.xlabel("N/P")
-    plt.ylabel(f"Variance of Eigencoeff Squared $\\tilde{{v}}_i^2$")
-    plt.xscale("log")
-    plt.yscale("log")
-    # plt.gca().invert_xaxis()
-    plt.legend()
-    plt.title(f"Variance of terms vs N/P; Rightwards = further underparameterized")
-    plt.show()
-
-#depricated based off changing eigenvectors
-# def get_all_vtildes(num_trials, n_trains, top_fra_eigmodes, rng, classes, kerneltype, kernel_width=2):
-#     all_v_tildes = []
-#     for n in n_trains:
-#         print(f"Starting N={n}")
-#         for p in top_fra_eigmodes:
-#             # indices = np.linspace(1, top_fra_eigmode+1, top_fra_eigmode)
-        
-#             print(f"Starting P={p}")
-#             v_tildes = torch.zeros(p, num_trials)
-#             for trial_idx in range(num_trials):
-#                 print(f"Starting run {trial_idx}")
-#                 if trial_idx == 0:
-#                     X_train, y = get_train_dataset(n, dataset_name="cifar10", rng=rng, classes=classes, center=True, normalize=False, binarize=True)
-#                     monomials, _, H, _, _ = get_standard_tools(X_train, kerneltype, kernel_width, top_mode_idx=p)
-#                     v_tildes[:, trial_idx] = get_vtilde(H, y, method = "LSTSQ", ridge = None)
-#                 else:
-#                     X_train, y = get_train_dataset(n, dataset_name="cifar10", rng=rng, classes=classes, center=True, normalize=False, binarize=True)
-#                     H = ensure_torch(get_matrix_hermites(X_train, monomials))
-#                     v_tildes[:, trial_idx] = get_vtilde(H, y, method = "LSTSQ", ridge = None)
-                    
-#             all_v_tildes.append(v_tildes)
