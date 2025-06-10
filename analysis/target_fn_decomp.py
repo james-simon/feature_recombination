@@ -139,8 +139,8 @@ def v_tilde_experiment(input_dict):
 
         if do_multiple_sampling:
             print(f"Resampling")
-            all_args.update({"X": None, "H": None})
-            del all_args["H"], all_args["fra_eigvals"]
+            all_args.update({"X": None, "H": None, "fra_eigvals": None}) # None-define for first pass
+            del all_args["H"], all_args["fra_eigvals"] #w/o deleting, causes issues in get_synth_dataset
             X, y, H, monomials, fra_eigvals, v_true = get_synthetic_dataset(**all_args)
             all_args.update(dict(X=X, y=y, H=H, monomials=monomials, fra_eigvals=fra_eigvals, v_true=v_true))
 
