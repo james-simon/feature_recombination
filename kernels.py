@@ -94,7 +94,7 @@ class Kernel:
     def project_hermites(self, H):
         # H.shape should be (samples, nhermites)
         assert self.eigvals is not None, "Call eigendecomp() first"
-        eigvals = eigvals.flip(0,)
+        eigvals = self.eigvals.flip(0,)
         H = ensure_torch(H)
         H /= torch.linalg.norm(H, axis=0)
         overlaps = (self.eigvecs.T @ H)**2
@@ -105,9 +105,9 @@ class Kernel:
         quartiles = np.zeros((nhermites, 3))
         for i in range(nhermites):
             cdf = cdfs[:, i]
-            quartiles[i, 0] = self.eigvals[cdf >= 0.25][0]
-            quartiles[i, 1] = self.eigvals[cdf >= 0.5][0]
-            quartiles[i, 2] = self.eigvals[cdf >= 0.75][0]
+            quartiles[i, 0] = eigvals[cdf >= 0.25][0]
+            quartiles[i, 1] = eigvals[cdf >= 0.5][0]
+            quartiles[i, 2] = eigvals[cdf >= 0.75][0]
         cdfs = cdfs.flip(0,)
 
         return ensure_numpy(overlaps.T), ensure_numpy(cdfs.T), quartiles

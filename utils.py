@@ -10,7 +10,7 @@ def ensure_numpy(x):
     return x
 
 
-def ensure_torch(x, dtype=torch.float64):
+def ensure_torch(x, dtype=torch.float32):
     """Convert numpy array to torch.Tensor if needed, and ensure correct dtype."""
 
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -45,6 +45,7 @@ def get_matrix_hermites(X, monomials):
             h *= hermites[exp](X_norm[:, d_i]) / Z
         H[:, i] = h
     return H
+
 
 def get_data_eigvals(X):
     N, _ = X.shape
