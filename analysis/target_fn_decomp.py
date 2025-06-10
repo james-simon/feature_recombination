@@ -121,7 +121,7 @@ def v_tilde_experiment(input_dict):
     shapes = [len(v) for v in values]
 
     num_trials = static_dict.get("num_trials", iterable_dict.get("num_trials")) #should usually be in num_trials
-    P = int(static_dict.get("top_fra_eigmode", np.min(iterable_dict.get("top_fra_eigmodes"))))
+    P = int(static_dict.get("top_fra_eigmode", np.min(iterable_dict.get("top_fra_eigmode"))))
 
     all_v_tildes = torch.zeros(*shapes, P, num_trials)
 
