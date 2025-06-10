@@ -147,7 +147,7 @@ def v_tilde_experiment(input_dict):
         out = sample_v_tilde(**all_args)
 
         multi_idx = np.unravel_index(idx, shapes)
-        all_v_tildes[multi_idx] = out
+        all_v_tildes[multi_idx] = out[:P, :]
     return all_v_tildes
 
 #explicit experiments
