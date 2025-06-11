@@ -29,12 +29,14 @@ def get_vtilde(H, y, method = "LSTSQ", **kwargs):
     return v_tilde
 
 def get_v_true(fra_eigvals, ytype='Gaussian', **kwargs):
-    assert ytype in ["Gaussian", "Uniform", "Binarized", "PowerLaw", "OneHot", "NHot"], "Type not found"
+    assert ytype in ["Gaussian", "Uniform", "Isotropic", "Binarized", "PowerLaw", "OneHot", "NHot"], "Type not found"
     match ytype:
         case "Gaussian":
             return ensure_torch(torch.normal(fra_eigvals, torch.sqrt(fra_eigvals)))
         case "Uniform":
             return ensure_torch(torch.rand(fra_eigvals.shape))
+        case "Isotropic":
+            return ensure_torch(1/fra_eigvals.shape)
         case "Binarized":
             H = kwargs.get("H", None)
             y_underlying = ensure_torch(torch.randint(low=0, high=2, size=(H.shape[0],)) * 2 - 1)
@@ -82,7 +84,7 @@ def get_v_true(fra_eigvals, ytype='Gaussian', **kwargs):
 def get_synthetic_dataset(X=None, data_eigvals=None, ytype="Gaussian", d=500, N=15000, offset=3, alpha=1.5, cutoff_mode=10000,
                           noise_size=0.1, normalized=True, **vargs):
     """
-    y_type: One of \"Gaussian\", \"Uniform\", \"Binarized\", "\PowerLaw\", \"OneHot\", \"NHot\"
+    y_type: One of \"Gaussian\", \"Uniform\", \"Isotropic\", \"Binarized\", "\PowerLaw\", \"OneHot\", \"NHot\"
     """
     if X is None:
         X, data_eigvals = get_synthetic_X(d=d, N=N, offset=offset, alpha=alpha)
