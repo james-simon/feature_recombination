@@ -36,7 +36,7 @@ def get_v_true(fra_eigvals, ytype='Gaussian', **kwargs):
         case "Uniform":
             return ensure_torch(torch.rand(fra_eigvals.shape[0]))
         case "Isotropic":
-            return ensure_torch(1/fra_eigvals.shape[0])
+            return ensure_torch(torch.ones_like(fra_eigvals)/fra_eigvals.shape[0])
         case "Binarized":
             H = kwargs.get("H", None)
             y_underlying = ensure_torch(torch.randint(low=0, high=2, size=(H.shape[0],)) * 2 - 1)
