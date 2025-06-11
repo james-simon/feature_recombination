@@ -129,7 +129,7 @@ def v_tilde_experiment(input_dict):
 
     #check if only one dataset needs to be made and everything can be based off that
     #or if we need to remake the dataset every time
-    do_multiple_sampling = np.any(key in keys for key in ["d", "n_train", "offset", "alpha", "cutoff_mode", "noise_size", "normalized"])
+    do_multiple_sampling = np.any(key in keys for key in ["d", "offset", "alpha", "cutoff_mode", "noise_size", "normalized"])
     if not do_multiple_sampling:
         X, y, H, monomials, fra_eigvals, v_true = get_synthetic_dataset(**static_dict)
         static_dict.update(dict(X=X, y=y, H=H, monomials=monomials, fra_eigvals=fra_eigvals, v_true=v_true))
@@ -150,7 +150,7 @@ def v_tilde_experiment(input_dict):
 
         multi_idx = np.unravel_index(idx, shapes)
         all_v_tildes[multi_idx] = out[:P, :]
-    return all_v_tildes
+    return all_v_tildes, H, v_true, monomials
 
 #explicit experiments
 
