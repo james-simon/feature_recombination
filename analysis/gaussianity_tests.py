@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.stats import norm
+import torch
 from utils import ensure_numpy, ensure_torch, grab_eigval_distributions
 
 def get_emperical_pdf(X, num_bins=100, tol=1e-3):
@@ -32,6 +33,8 @@ def get_emperical_cdf(X):
 #     return samples
 
 def eigvecs_to_gaussian(X, S=None, to_torch=True):
+    if S is None:
+        _, S, _ = torch.linalg.svd(X, full_matrices=False)
     X = ensure_numpy(X)
     S = ensure_numpy(S)
     uniform = get_emperical_cdf(X)
@@ -46,6 +49,8 @@ def eigvecs_to_gaussian(X, S=None, to_torch=True):
     return ensure_torch(gaussian_data) if to_torch else gaussian_data
 
 def gaussianize_data(X, S=None, Vt=None):
+    if S is None:
+        _, S, _ = torch.linalg.svd(X, full_matrices=False)
     eigenvectors, Vt = grab_eigval_distributions(X)
     gaussian_data = eigvecs_to_gaussian(eigenvectors, S)
     return gaussian_data @ Vt
