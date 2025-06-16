@@ -5,11 +5,11 @@ import matplotlib.pyplot as plt
 from utils import ensure_numpy, ensure_torch
 
 def plot_v_tildes(all_v_tildes, monomials, axes=None, fig=None, titles=None, suptitle="", avg_mode="squared", error_mode="quartiles", colors = None, errorbars=True,
-                  **kwargs):
+                  v_true=None, **kwargs):
     """
     If axes/fig is None, assumes one plot is wanted; uses plt instead of axes
     """
-    def _get_avg_vtilde(v_tildes):
+    def _get_avg_vtilde(v_tildes, mons):
         avg_v = transform_fn(v_tildes).mean(axis=1)
         if error_mode == "quartiles":
             p25 = np.percentile(transform_fn(v_tildes), 25, axis=1)
@@ -20,7 +20,7 @@ def plot_v_tildes(all_v_tildes, monomials, axes=None, fig=None, titles=None, sup
         
         num_terms = len(avg_v)
         indices = np.linspace(1, num_terms+1, num_terms)
-        degrees = np.array([monomial.degree() for monomial in monomials[:num_terms]])
+        degrees = np.array([monomial.degree() for monomial in mons[:num_terms]])
         return avg_v, err_v, indices, degrees
     
     assert avg_mode in ["squared", "abs"], "Averaging method not found"
@@ -28,7 +28,7 @@ def plot_v_tildes(all_v_tildes, monomials, axes=None, fig=None, titles=None, sup
     print("Found more v_tildes than axes") if axes is not None and len(all_v_tildes) != len(axes.flatten()) else None
     
     colors = colors if colors is not None else ['xkcd:red', 'xkcd:orange', 'xkcd:gold', 'xkcd:green', 'xkcd:blue', "xkcd:purple", "xkcd:black"]
-    titles = titles if titles is not None else len(axes.flatten())*[""]
+    titles = titles if titles is not None else len(axes.flatten())*[""]    
     
     transform_fn = lambda x: np.abs(x) if avg_mode == "abs" else x**2
     
@@ -38,12 +38,17 @@ def plot_v_tildes(all_v_tildes, monomials, axes=None, fig=None, titles=None, sup
     
     show_values = kwargs.get("show_values", None)
 
+    monlist = isinstance(monomials, list) and all(isinstance(elem, list) for elem in monomials)
+    mons = monomials
+
     if axes is not None:
         for i, ax in enumerate(axes.flatten()):
             text_kwargs = {'fontsize': 12, 'transform': ax.transAxes}
+            if monlist:
+                mons = monomials[i//len(monomials)]
         
             v_tildes = all_v_tildes[i]
-            avg_v, err_v, indices, degrees = _get_avg_vtilde(v_tildes)
+            avg_v, err_v, indices, degrees = _get_avg_vtilde(v_tildes, mons)
             for degree in np.unique(degrees):
                 idxs = np.where(np.array(degrees) == degree)[0]
                 if errorbars:
@@ -63,14 +68,19 @@ def plot_v_tildes(all_v_tildes, monomials, axes=None, fig=None, titles=None, sup
             ax.set_title(titles[i])
             ax.set_xscale("log")
             ax.set_yscale("log")
-            ax.text(0.05, 0.9, f'$\\Sigma \\tilde{{v}}^2 = {v_tilde_sum:.2e}$', **text_kwargs)
+            ax.text(0.7, 0.9, f'$\\Sigma \\tilde{{v}}^2 = {v_tilde_sum:.2e}$', **text_kwargs)
+            if v_true is not None:
+                v_true_clipped = transform_fn(v_true)[:v_tildes.shape[0]].cpu().numpy()
+                ax.plot(np.linspace(1, v_tildes.shape[0]+1, v_tildes.shape[0]), v_true_clipped, color='xkcd:black', zorder=10)
+                ax.text(0.7, 0.8, f'$\\Sigma \\tilde{{v}}^2 = {v_true_clipped.sum():.2e}$', **text_kwargs)
+
 
         fig.suptitle(suptitle, fontsize=24)
         fig.supxlabel("Index", fontsize=18)
         fig.supylabel(f"Average of {ylabhelperavg} Eigencoeff {ylabhelpershowing} {ylabhelpervar}", fontsize=18)
     
     else:
-        avg_v, err_v, indices, degrees = _get_avg_vtilde(all_v_tildes)
+        avg_v, err_v, indices, degrees = _get_avg_vtilde(all_v_tildes, mons)
         for degree in np.unique(degrees):
             idxs = np.where(np.array(degrees) == degree)[0]
             if errorbars:
@@ -78,13 +88,18 @@ def plot_v_tildes(all_v_tildes, monomials, axes=None, fig=None, titles=None, sup
             else:
                 plt.scatter(indices[idxs], avg_v[idxs], color=colors[degree%7], linestyle='', marker='.', alpha=1/(degree+1),)
             
+        if v_true is not None:
+            v_true_clipped = transform_fn(v_true)[:all_v_tildes.shape[0]].cpu().numpy()
+            plt.plot(np.linspace(1, v_tildes.shape[0]+1, v_tildes.shape[0]), v_true_clipped, color='xkcd:black', zorder=10)
+            plt.text(0.7, 0.8, f'$\\Sigma \\tilde{{v}}^2 = {v_true_clipped.sum():.2e}$', **{'fontsize': 12})
+            
         plt.title(titles)
         plt.xscale("log")
         plt.yscale("log")
 
         plt.xlabel("Index")
         plt.ylabel(f"Average of {ylabhelperavg} Eigencoeff {ylabhelpershowing} {ylabhelpervar}")
-    plt.show()
+    
 
 def plot_v_tilde_variances_1(all_v_tildes, degrees, colors=None):
     num_terms = all_v_tildes.shape[1]
