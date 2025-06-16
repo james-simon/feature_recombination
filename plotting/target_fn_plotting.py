@@ -74,7 +74,7 @@ def plot_v_tildes(all_v_tildes, monomials, axes=None, fig=None, titles=None, sup
                 clipper = clipper[i] if clipper is not None else v_tildes.shape[0]
                 v_true_clipped = transform_fn(v_true)[:clipper].cpu().numpy()
                 ax.plot(np.linspace(1, clipper+1, clipper), v_true_clipped, color='xkcd:black', zorder=10)
-                ax.text(0.7, 0.8, f'$\\Sigma \\tilde{{v_{{True}}}}^2 = {v_true_clipped.sum():.2e}$', **text_kwargs)
+                ax.text(0.7, 0.8, f'$\\Sigma \\tilde{{v}}_{{True}}^2 = {v_true_clipped.sum():.2e}$', **text_kwargs)
 
 
         fig.suptitle(suptitle, fontsize=24)
@@ -95,7 +95,7 @@ def plot_v_tildes(all_v_tildes, monomials, axes=None, fig=None, titles=None, sup
             clipper = clipper[i] if clipper is not None else v_tildes.shape[0]
             v_true_clipped = transform_fn(v_true)[:clipper].cpu().numpy()
             plt.plot(np.linspace(1, clipper+1, clipper), v_true_clipped, color='xkcd:black', zorder=10)
-            plt.text(0.7, 0.8, f'$\\Sigma \\tilde{{v_{{True}}}}^2 = {v_true_clipped.sum():.2e}$', **{'fontsize': 12})
+            plt.text(0.7, 0.8, f'$\\Sigma \\tilde{{v}}_{{True}}^2 = {v_true_clipped.sum():.2e}$', **{'fontsize': 12})
             
         plt.title(titles)
         plt.xscale("log")
