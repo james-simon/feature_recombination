@@ -91,7 +91,7 @@ def estimate_kappa(kernel, n, ridge=0):
     return kappa
 
 
-def project_hermites(kernel, H):
+def kernel_hermite_overlap_estimation(kernel, H):
     # H.shape should be (samples, nhermites)
     assert kernel.eigvals is not None, "Call eigendecomp() first"
     eigvals = kernel.eigvals.flip(0,)
