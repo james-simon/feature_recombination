@@ -60,7 +60,7 @@ class ImageData():
         'imagenet64': None,
     }
 
-    def __init__(self, dataset_name, data_dir, classes=None, onehot=True, format='NCHW'):
+    def __init__(self, dataset_name, data_dir, classes=None, onehot=True, format='NCHW', **kwargs):
         """
         dataset_name (str): one of  'mnist', 'fmnist', 'cifar10', 'cifar100', 'imagenet32', 'imagenet64'
         dataset_dir (str): the directory where the raw dataset is saved
@@ -116,8 +116,8 @@ class ImageData():
             return X.astype(np.float32), y.astype(np.float32)
 
         if self.name in ['cifar10','cifar100', 'mnist', 'fmnist']:
-            raw_train = self.dataset_dict[self.name](root=data_dir, train=True, download=True)
-            raw_test = self.dataset_dict[self.name](root=data_dir, train=False, download=True)
+            raw_train = self.dataset_dict[self.name](root=data_dir, train=True, download=True, transform=kwargs.get("transform", None))
+            raw_test = self.dataset_dict[self.name](root=data_dir, train=False, download=True, transform=kwargs.get("transform", None))
         if self.name == 'svhn':
             raw_train = self.dataset_dict[self.name](root=data_dir, split='train', download=True)
             raw_test = self.dataset_dict[self.name](root=data_dir, split='test', download=True)
