@@ -133,9 +133,12 @@ class SyntheticDataset(Dataset):
         self.data_eigvals = data_eigvals
         self.N = N
         self.transform = transform
+        if vargs.get("image", False):
+            self.X = torch.reshape(self.X, (self.X.shape[0], np.sqrt(self.X.shape[1]).astype(int), np.sqrt(self.X.shape[1]).astype(int)))
 
     def __len__(self):
         return self.N
+
 
     def __getitem__(self, idx):
         
