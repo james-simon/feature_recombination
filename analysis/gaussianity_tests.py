@@ -2,6 +2,7 @@ import numpy as np
 from scipy.stats import norm
 import torch
 from utils import ensure_numpy, ensure_torch, grab_eigval_distributions
+from .independence_tests import independentize_data
 
 def get_emperical_pdf(X, num_bins=100, tol=1e-3):
     counts, bin_edges = np.histogram(X, bins=num_bins, density=True)
@@ -48,9 +49,18 @@ def eigvecs_to_gaussian(X, S=None, to_torch=True):
             gaussian_data *= S.reshape(1, -1)  # broadcast to columns
     return ensure_torch(gaussian_data) if to_torch else gaussian_data
 
-def gaussianize_data(X, S=None, Vt=None):
-    if S is None:
-        _, S, _ = torch.linalg.svd(X, full_matrices=False)
-    eigenvectors, Vt = grab_eigval_distributions(X)
+def gaussianize_marginals(X):
+    U, S, Vt = torch.linalg.svd(X, full_matrices=False)
+    eigenvectors = U @ torch.diag(S)
     gaussian_data = eigvecs_to_gaussian(eigenvectors, S)
     return gaussian_data @ Vt
+
+def gaussianize_data(X):
+    _, _, Vt = torch.linalg.svd(X, full_matrices=False)
+    X_independent = independentize_data(X, bsz=X.shape[0])
+    gaussianized_data = gaussianize_marginals(X_independent)
+    return gaussianized_data @ Vt
+
+def percent_gaussian(X, alpha=0.5, S=None):
+    modified_dist = (1-alpha) * X + alpha * gaussianize_data(X)
+    return modified_dist

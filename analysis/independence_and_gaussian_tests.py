@@ -1,13 +1,12 @@
 import torch
-from .gaussianity_tests import gaussianize_data
+from .gaussianity_tests import gaussianize_marginals, gaussianize_data
 from .independence_tests import independentize_data
 from utils import get_standard_tools
 
 def full_analysis(X, kerneltype, kernel_width, top_fra_eigmode=3000):
-    _, S, _ = torch.linalg.svd(X, full_matrices=False)
-    X_gaussian = gaussianize_data(X, S=S)
+    X_gaussian = gaussianize_marginals(X)
     X_independent = independentize_data(X, bsz=X.shape[0])
-    X_gaussian_independent = gaussianize_data(X_independent, S=S)
+    X_gaussian_independent = gaussianize_data(X)
     # X_independent_gaussian = independentize_data(X_gaussian, bsz=X.shape[0])
 
     outdict = {}
