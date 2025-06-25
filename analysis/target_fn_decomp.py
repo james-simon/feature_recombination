@@ -25,18 +25,17 @@ def get_vtilde(H, y, method = "LSTSQ", **kwargs):
 
     return v_tilde
 
-def sample_v_tilde(H=None, y=None, top_fra_eigmode=None, n_train=10, num_trials=20, method="LSTSQ", normalized=True, verbose_every=5, **kwargs):
+def sample_v_tilde(H=None, y=None, top_fra_eigmode=None, n_train=10, num_trials=20, method="LSTSQ", verbose_every=5, **kwargs):
     """
     Samples v_tilde by randomly selecting n_train samples from H and y.
     """
     Nmax = H.shape[0]
-    norm_amount = np.sqrt(n_train) if normalized else 1
     v_tildes = torch.zeros(top_fra_eigmode, num_trials)
     for trial_idx in range(num_trials):
         if verbose_every is not None and not trial_idx%verbose_every:
             print(f"Starting run {trial_idx}")
         random_sampling = np.random.choice(Nmax, size=n_train, replace=False)
-        v_tilde = get_vtilde(H[random_sampling, :top_fra_eigmode], y[random_sampling]/norm_amount, method=method, **kwargs)
+        v_tilde = get_vtilde(H[random_sampling, :top_fra_eigmode], y[random_sampling], method=method, **kwargs)
         v_tildes[:, trial_idx] = v_tilde
     return v_tildes
 
