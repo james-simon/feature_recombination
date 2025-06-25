@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 from math import factorial
-from utils import ensure_torch
+from utils import ensure_torch, ensure_numpy
 
 
 class Kernel:
@@ -181,7 +181,7 @@ class LaplaceKernel(Kernel):
         self.K = torch.exp(-self.get_dX() / (np.sqrt(2)*self.kernel_width))
 
     @staticmethod
-    def get_level_coeff_fn2(data_eigvals, **kwargs):
+    def get_level_coeff_fn(data_eigvals, **kwargs):
         q = data_eigvals.sum().item()
         s = kwargs["kernel_width"]
         s_eff = s / np.sqrt(q)
@@ -198,42 +198,6 @@ class LaplaceKernel(Kernel):
 
         def eval_level_coeff(ell):
             return np.exp(-1/s_eff) * bessel_poly(ell-1) / ((2*s_eff)**ell)
-        return eval_level_coeff
-        
-    @staticmethod
-    def get_level_coeff_fn(data_eigvals, **kwargs):
-        q = data_eigvals.sum().item()
-        s = kwargs["kernel_width"] * np.sqrt(2)
-                
-        numerator = {
-            0: 1,
-            1: np.sqrt(2),
-            2: (2 * np.sqrt(q) + np.sqrt(2) * s),
-            3: (2 * np.sqrt(2) * q + 6 * np.sqrt(q) * s + 3 * np.sqrt(2) * s**2),
-            4: (4 * q ** (3/2) + 12 * np.sqrt(2) * q * s + 30 * np.sqrt(q) * s**2 + 15 * np.sqrt(2) * s**3),
-            5: (4 * np.sqrt(2) * q**2 + 40 * q ** (3/2) * s + 90 * np.sqrt(2) * q * s**2 + 210 * np.sqrt(q) * s**3 \
-                + 105 * np.sqrt(2) * s**4),
-            6: (8 * q ** (5/2) + 60 * np.sqrt(2) * q**2 * s + 420 * q ** (3/2) * s**2 + 840 * np.sqrt(2) * q * s**3 \
-                + 1890 * np.sqrt(q) * s**4 + 945 * np.sqrt(2) * s**5),
-            7: (8 * np.sqrt(2) * q**3 + 168 * q ** (5/2) * s + 840 * np.sqrt(2) * q**2 * s**2 \
-                + 5040 * q ** (3/2) * s**3 + 9450 * np.sqrt(2) * q * s**4 + 20790 * np.sqrt(q) * s**5 \
-                + 10395 * np.sqrt(2) * s**6),
-            8: (16 * q ** (7/2) + 224 * np.sqrt(2) * q**3 * s + 3024 * q ** (5/2) * s**2 \
-                + 12600 * np.sqrt(2) * q**2 * s**3 + 69300 * q ** (3/2) * s**4 + 124740 * np.sqrt(2) * q * s**5 \
-                + 270270 * np.sqrt(q) * s**6 + 135135 * np.sqrt(2) * s**7),
-            9: (16 * np.sqrt(2) * q**4 + 576 * q ** (9/2) * s + 5040 * np.sqrt(2) * q**3 * s**2 \
-                + 55440 * q ** (5/2) * s**3 + 207900 * np.sqrt(2) * q**2 * s**4 + 1081080 * q ** (3/2) * s**5 \
-                + 1891890 * np.sqrt(2) * q * s**6 + 4054050 * np.sqrt(q) * s**7 + 2027025 * np.sqrt(2) * s**8),
-            10: (32 * q ** (9/2) + 720 * np.sqrt(2) * q**4 * s + 15840 * q ** (7/2) * s**2 \
-                 + 1081080 * np.sqrt(2) * q**3 * s**3 + 3783780 * q ** (5/2) * s**4 \
-                 + 18918900 * np.sqrt(2) * q**2 * s**5 + 18918900 * q ** (3/2) * s**6 \
-                 + 32432400 * np.sqrt(2) * q * s**7 + 68918850 * np.sqrt(q) * s**8 + 34459425 * np.sqrt(2) * s**9),
-        }
-
-        def eval_level_coeff(k):
-            assert k in numerator, f"k={k} level coeff not solved (sorry!)"
-            f = numerator[k] / (q**(-1/2) * (2*s*q)**k)
-            return f * np.exp(-np.sqrt(2*q)/s)
         return eval_level_coeff
 
 

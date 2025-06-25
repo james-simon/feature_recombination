@@ -47,28 +47,6 @@ def get_matrix_hermites(X, monomials):
     return H
 
 
-def get_KH_overlaps(kernel, H):
-    # H.shape should be (samples, nhermites)
-    assert kernel.eigvals is not None, "Call eigendecomp() first"
-    eigvals = kernel.eigvals.flip(0,)
-    H = ensure_torch(H)
-    H /= torch.linalg.norm(H, axis=0)
-    overlaps = (kernel.eigvecs.T @ H)**2
-    # overlap has shape (neigvecs, nhermites)
-    nhermites = H.shape[1]
-    cdfs = overlaps.flip(0,).cumsum(axis=0)
-
-    quartiles = np.zeros((nhermites, 3))
-    for i in range(nhermites):
-        cdf = cdfs[:, i]
-        quartiles[i, 0] = eigvals[cdf >= 0.25][0]
-        quartiles[i, 1] = eigvals[cdf >= 0.5][0]
-        quartiles[i, 2] = eigvals[cdf >= 0.75][0]
-    cdfs = cdfs.flip(0,)
-
-    return ensure_numpy(overlaps.T), ensure_numpy(cdfs.T), quartiles
-
-
 def get_data_eigvals(X):
     N, _ = X.shape
     S = torch.linalg.svdvals(X)
