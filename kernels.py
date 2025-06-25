@@ -4,49 +4,6 @@ from math import factorial
 from utils import ensure_torch, ensure_numpy
 
 
-class Kernel:
-
-    def __init__(self, X):
-        assert X.ndim == 2
-        self.X = ensure_torch(X)
-        self.K = None
-        self.eigvals = None
-        self.eigvecs = None
-
-    def set_K(self, K):
-        self.K = K
-        self.eigvals = None
-        self.eigvecs = None
-
-    def eigenvals(self):
-        if self.eigvals is None:
-            n = self.X.shape[0]
-            self.eigvals = torch.linalg.eigvalsh(self.K / n).flip((0,))
-        return self.eigvals
-
-    def eigendecomp(self):
-        if self.eigvecs is None:
-            n = self.X.shape[0]
-            eigvals, eigvecs = torch.linalg.eigh(self.K / n)
-            self.eigvals = eigvals.flip((0,))
-            self.eigvecs = eigvecs.flip((1,))
-        return self.eigvals, self.eigvecs
-
-    def get_dX(self):
-        if not torch.cuda.is_available():
-            return torch.linalg.norm(self.X[:, None, :] - self.X[None, :, :], axis=-1)
-        gpu_mem_avail, _ = torch.cuda.mem_get_info()
-        N, d = self.X.shape
-        step = int(0.1 * gpu_mem_avail / (N * d * 4))
-        dX = torch.zeros((N, N))
-        for i in range(0, N, step):
-            dX[i:i+step, :] = torch.linalg.norm(self.X[i:i+step, None, :] - self.X[None, :, :], axis=-1)
-        dX = ensure_torch(dX)
-        assert torch.all(dX.T == dX), "dX must be symmetric"
-        assert torch.all(dX >= 0), "dX must be nonnegative"
-        return dX
-
-
 def krr(K, y, n_train, n_test, ridge=0):
     n_tot = K.shape[0]
     assert n_train + n_test <= n_tot
@@ -111,6 +68,49 @@ def kernel_hermite_overlap_estimation(kernel, H):
     cdfs = cdfs.flip(0,)
 
     return ensure_numpy(overlaps.T), ensure_numpy(cdfs.T), quartiles
+
+
+class Kernel:
+
+    def __init__(self, X):
+        assert X.ndim == 2
+        self.X = ensure_torch(X)
+        self.K = None
+        self.eigvals = None
+        self.eigvecs = None
+
+    def set_K(self, K):
+        self.K = K
+        self.eigvals = None
+        self.eigvecs = None
+
+    def eigenvals(self):
+        if self.eigvals is None:
+            n = self.X.shape[0]
+            self.eigvals = torch.linalg.eigvalsh(self.K / n).flip((0,))
+        return self.eigvals
+
+    def eigendecomp(self):
+        if self.eigvecs is None:
+            n = self.X.shape[0]
+            eigvals, eigvecs = torch.linalg.eigh(self.K / n)
+            self.eigvals = eigvals.flip((0,))
+            self.eigvecs = eigvecs.flip((1,))
+        return self.eigvals, self.eigvecs
+
+    def get_dX(self):
+        if not torch.cuda.is_available():
+            return torch.linalg.norm(self.X[:, None, :] - self.X[None, :, :], axis=-1)
+        gpu_mem_avail, _ = torch.cuda.mem_get_info()
+        N, d = self.X.shape
+        step = int(0.1 * gpu_mem_avail / (N * d * 4))
+        dX = torch.zeros((N, N))
+        for i in range(0, N, step):
+            dX[i:i+step, :] = torch.linalg.norm(self.X[i:i+step, None, :] - self.X[None, :, :], axis=-1)
+        dX = ensure_torch(dX)
+        assert torch.all(dX.T == dX), "dX must be symmetric"
+        assert torch.all(dX >= 0), "dX must be nonnegative"
+        return dX
 
 
 class ExponentialKernel(Kernel):
@@ -207,7 +207,6 @@ class ReluNNGPKernel(Kernel):
         super().__init__(X)
         norms = torch.linalg.norm(self.X, dim=-1, keepdim=True)
         K_norm = norms @ norms.T
-        d = self.X.shape[1]
         theta = torch.acos((self.X @ self.X.T / K_norm).clip(-1, 1))
         angular = torch.sin(theta) + (np.pi - theta)*torch.cos(theta)
         self.K = 1/(2*np.pi) * K_norm * angular
