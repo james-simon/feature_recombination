@@ -18,51 +18,6 @@ class Kernel:
         self.eigvals = None
         self.eigvecs = None
 
-    def krr(self, y, n_train, ridge=0, shuffle=True):
-        K = self.K
-        y = ensure_torch(y)
-        if shuffle:
-            idxs = ensure_torch(torch.randperm(K.shape[0], dtype=torch.int32))
-            K = K[idxs, idxs]
-            y = y[idxs]
-
-        K_train, K_test = K[:n_train, :n_train], K[:, :n_train]
-        y_train, y_test = y[:n_train], y[n_train:]
-
-        if ridge == 0:
-            alpha = torch.linalg.lstsq(K_train, y_train)
-        else:
-            eye = ensure_torch(torch.eye(n_train))
-            alpha = torch.linalg.lstsq(K_train + ridge * eye, y_train)
-
-        y_hat = K_test @ alpha.solution
-        # Train error
-        y_hat_train = y_hat[:n_train]
-        train_mse = ((y_train - y_hat_train) ** 2).mean(axis=0)
-
-        # Test error
-        y_hat_test = y_hat[n_train:]
-        test_mse = ((y_test - y_hat_test) ** 2).mean(axis=0)
-
-        test_lrn = (y_test * y_hat_test).mean(axis=0) / (y_test ** 2).mean(axis=0)
-        test_lrn = test_lrn
-
-        return train_mse, test_mse, test_lrn
-
-    def estimate_kappa(self, n, ridge=0, shuffle=True):
-        K = self.K
-        if shuffle:
-            idxs = ensure_torch(torch.randperm(K.shape[0], dtype=torch.int32))
-            K = K[idxs, idxs]
-
-        if ridge == 0:
-            K_n = K[:n, :n]
-        else:
-            eye = ensure_torch(torch.eye(n))
-            K_n = K[:n, :n] + ridge * eye
-        kappa = 1 / torch.trace(torch.linalg.pinv(K_n)).item()
-        return kappa
-
     def eigenvals(self):
         if self.eigvals is None:
             n = self.X.shape[0]
@@ -90,6 +45,72 @@ class Kernel:
         assert torch.all(dX.T == dX), "dX must be symmetric"
         assert torch.all(dX >= 0), "dX must be nonnegative"
         return dX
+
+
+def krr(K, y, n_train, n_test, ridge=0):
+    n_tot = K.shape[0]
+    assert n_train + n_test <= n_tot
+    train_slc = torch.randperm(n_tot - n_test)[:n_train]
+    test_slc = torch.arange(n_tot - n_test, n_tot)
+    slc = torch.cat([train_slc, test_slc])
+    K = K[slc[:, None], slc[None, :]]
+    y = y[slc]
+
+    K_train, K_test = K[:n_train, :n_train], K[:, :n_train]
+    y_train, y_test = y[:n_train], y[n_train:]
+
+    if ridge == 0:
+        alpha = torch.linalg.lstsq(K_train, y_train)
+    else:
+        eye = ensure_torch(torch.eye(n_train))
+        alpha = torch.linalg.lstsq(K_train + ridge * eye, y_train)
+
+    y_hat = K_test @ alpha.solution
+    
+    y_hat_train = y_hat[:n_train]
+    train_mse = ((y_train - y_hat_train) ** 2).mean(axis=0)
+    train_mse = train_mse.sum().item()
+
+    y_hat_test = y_hat[n_train:]
+    test_mse = ((y_test - y_hat_test) ** 2).mean(axis=0)
+    test_mse = test_mse.sum().item()
+
+    return train_mse, test_mse, y_hat
+
+
+def estimate_kappa(kernel, n, ridge=0):
+    K = kernel.K
+    n_tot = K.shape[0]
+    slc = torch.randperm(n_tot)[:n]
+    K_n = K[slc[:, None], slc[None, :]]
+
+    if ridge != 0:
+        eye = ensure_torch(torch.eye(n))
+        K_n = K_n + ridge * eye
+    kappa = 1 / torch.trace(torch.linalg.pinv(K_n)).item()
+    return kappa
+
+
+def kernel_hermite_overlap_estimation(kernel, H):
+    # H.shape should be (samples, nhermites)
+    assert kernel.eigvals is not None, "Call eigendecomp() first"
+    eigvals = kernel.eigvals.flip(0,)
+    H = ensure_torch(H)
+    H /= torch.linalg.norm(H, axis=0)
+    overlaps = (kernel.eigvecs.T @ H)**2
+    # overlap has shape (neigvecs, nhermites)
+    nhermites = H.shape[1]
+    cdfs = overlaps.flip(0,).cumsum(axis=0)
+
+    quartiles = np.zeros((nhermites, 3))
+    for i in range(nhermites):
+        cdf = cdfs[:, i]
+        quartiles[i, 0] = eigvals[cdf >= 0.25][0]
+        quartiles[i, 1] = eigvals[cdf >= 0.5][0]
+        quartiles[i, 2] = eigvals[cdf >= 0.75][0]
+    cdfs = cdfs.flip(0,)
+
+    return ensure_numpy(overlaps.T), ensure_numpy(cdfs.T), quartiles
 
 
 class ExponentialKernel(Kernel):

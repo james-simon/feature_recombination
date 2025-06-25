@@ -100,3 +100,15 @@ def grab_eigval_distributions(X):
     eigenvector_array = U @ torch.diag(S)# * np.sqrt(N)
 
     return eigenvector_array, Vt
+
+def cossim_per_eigvec(v1, v2):
+    v1_norm = v1 / np.linalg.norm(v1, axis=1, keepdims=True)
+    v2_norm = v2 / np.linalg.norm(v2, axis=1, keepdims=True)
+    return np.sum(v1_norm * v2_norm, axis=1)
+
+#helper fns for experimental tests
+def find_iterables(d, no_list=["H", "y"]):
+    return {k: v for k, v in d.items() if (isinstance(v, (list, np.ndarray)) and k not in no_list)}
+
+def find_statics(d):
+    return {k: v for k, v in d.items() if not isinstance(v, (list, np.ndarray))}
