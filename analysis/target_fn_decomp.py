@@ -80,14 +80,14 @@ def v_tilde_experiment(input_dict):
 
 #explicit experiments
 
-def v_tilde_p_experiment(top_fra_eigmodes, H, y, n_train, num_trials=20, minmode=True, method="LSTSQ", normalized=True, verbose_every=5, ridge=None):
+def v_tilde_p_experiment(top_fra_eigmodes, H, y, n_train, num_trials=20, minmode=True, method="LSTSQ", verbose_every=5, ridge=None, **kwargs):
     minval = np.min(top_fra_eigmodes)
 
     all_v_tildes = [] if not minmode else torch.zeros(len(top_fra_eigmodes), minval, num_trials)
     for i, top_fra_eigmode in enumerate(top_fra_eigmodes):
         top_fra_eigmode = int(top_fra_eigmode) #usually a np.int which prints exception
         print(f"Starting P={top_fra_eigmode}")
-        v_tildes = sample_v_tilde(H, y, top_fra_eigmode, n_train, num_trials, normalized=normalized, verbose_every=5, method=method, ridge=None)
+        v_tildes = sample_v_tilde(H, y, top_fra_eigmode, n_train, num_trials, verbose_every=5, method=method, ridge=None, **kwargs)
         if not minmode:
             all_v_tildes.append(v_tildes)
         else:
