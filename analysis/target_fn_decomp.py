@@ -40,6 +40,22 @@ def sample_v_tilde(H=None, y=None, top_fra_eigmode=None, n_train=10, num_trials=
         v_tildes[:, trial_idx] = v_tilde
     return v_tildes
 
+def v_tilde_dirac(H=None, y=None, n_train=10, num_trials=20, method="LSTSQ", verbose_every=5, y_normalize=False, **kwargs):
+    """
+    Try to estimate v_tilde by getting coefficients one at a time.
+    """
+    Nmax, num_eigvecs = H.shape
+    v_tildes = torch.zeros(num_eigvecs, num_trials)
+    norm_amount = np.sqrt(n_train) if y_normalize else 1
+    for eigvec in range(num_eigvecs):
+        for trial_idx in range(num_trials):
+            if verbose_every is not None and not trial_idx%verbose_every:
+                print(f"Starting run {trial_idx}")
+            random_sampling = np.random.choice(Nmax, size=n_train, replace=False)
+            v_tilde = get_vtilde(H[random_sampling, eigvec], y[random_sampling]/norm_amount, method=method, **kwargs)
+            v_tildes[:, trial_idx] = v_tilde
+    return v_tildes
+
 def v_tilde_experiment(input_dict):
     #assumes all v_tildes will be similarly shaped
     iterable_dict = find_iterables(input_dict)
