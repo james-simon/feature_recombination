@@ -16,7 +16,7 @@ def plot_v_tildes(all_v_tildes, monomials, axes=None, fig=None, titles=None, sup
             p75 = np.percentile(transform_fn(v_tildes), 75, axis=1)
             err_v = np.vstack((ensure_numpy(avg_v) - p25, p75 - ensure_numpy(avg_v))).T
         else:
-            err_v = transform_fn(v_tildes).std(axis=1)
+            err_v = transform_fn(v_tildes.std(axis=1))
         
         num_terms = len(avg_v)
         indices = np.linspace(1, num_terms+1, num_terms)
@@ -45,7 +45,7 @@ def plot_v_tildes(all_v_tildes, monomials, axes=None, fig=None, titles=None, sup
         for i, ax in enumerate(axes.flatten()):
             text_kwargs = {'fontsize': 12, 'transform': ax.transAxes}
             if monlist:
-                mons = monomials[i//len(monomials)]
+                mons = monomials[i%len(monomials)]
         
             v_tildes = all_v_tildes[i]
             avg_v, err_v, indices, degrees = _get_avg_vtilde(v_tildes, mons)

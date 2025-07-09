@@ -52,7 +52,7 @@ def v_tilde_dirac(H=None, y=None, n_train=10, num_trials=20, method="LSTSQ", ver
             if verbose_every is not None and not trial_idx%verbose_every:
                 print(f"Starting run {trial_idx}")
             random_sampling = np.random.choice(Nmax, size=n_train, replace=False)
-            v_tilde = get_vtilde(H[random_sampling, eigvec], y[random_sampling]/norm_amount, method=method, **kwargs)
+            v_tilde = get_vtilde(H[random_sampling, eigvec].unsqueeze(1), y[random_sampling]/norm_amount, method=method, **kwargs)
             v_tildes[:, trial_idx] = v_tilde
     return v_tildes
 
