@@ -70,7 +70,7 @@ def get_v_true(fra_eigvals, ytype='Gaussian', **kwargs):
             alpha = kwargs.get("valpha", 1.5)
             pldim = H.shape[1]
             # pldim = kwargs.get("pldim", 400)
-            pldecay = ensure_torch((i0+np.arange(pldim)) ** -alpha)
+            pldecay = ensure_torch((i0+np.arange(pldim)) ** -alpha/2)
             pldecay /= torch.sqrt((pldecay**2).sum())
             v = pldecay
             # y_underlying = ensure_torch(torch.randint(low=0, high=2, size=(H.shape[0],)) * 2 - 1)
