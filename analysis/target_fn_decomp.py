@@ -42,7 +42,7 @@ def sample_v_tilde(H=None, v_true=None, y=None, top_fra_eigmode=None, n=10, n_tr
         v_tildes[:, trial_idx] = v_tilde
         if v_true is not None:
             err = H[:, :top_fra_eigmode] @ (v_tilde - v_true[:top_fra_eigmode]) + H[:, top_fra_eigmode:] @ v_true[top_fra_eigmode:]
-            residuals[trial_idx] = (err**2).mean()
+            residuals[trial_idx] = (err**2).sum()
         else:
             residuals = None # can fix later if needed
     return v_tildes, residuals
@@ -65,7 +65,7 @@ def find_beta(K, y, num_estimators=20, n_test=100, n_trials=20, rng=np.random.de
     log_sizes = np.log(sizes)
     beta = torch.linalg.lstsq(ensure_torch(log_sizes[:, None]), ensure_torch(log_test_mses)).solution.squeeze()
     
-    return beta
+    return beta+1
 
 def get_eigencoeffs(X=None, y=None, dataset_name=None, n_train=None, n_test=None, kerneltype=None, kernel_width=2, beta=None,
                     num_estimators=20, n_trials=20, n_trials_beta=10, rng=np.random.default_rng(42), **dataargs):
