@@ -69,14 +69,9 @@ def get_v_true(fra_eigvals, ytype='Gaussian', **kwargs):
             i0 = kwargs.get("vi0", 3)
             alpha = kwargs.get("valpha", 1.5)
             pldim = H.shape[1]
-            # pldim = kwargs.get("pldim", 400)
             pldecay = ensure_torch((i0+np.arange(pldim)) ** (-alpha/2))
             pldecay /= torch.sqrt((pldecay**2).sum())
             v = pldecay
-            # y_underlying = ensure_torch(torch.randint(low=0, high=2, size=(H.shape[0],)) * 2 - 1)
-            # y_refactor = y_underlying - H[:, :pldim] @ pldecay
-            # v_non_pl = torch.linalg.lstsq(H[:, pldim:], y_refactor).solution
-            # v = torch.hstack((pldecay, v_non_pl)).T
             return ensure_torch(v)
         case "OneHot":
             H = kwargs.get("H", None)
@@ -233,7 +228,7 @@ class ImageData():
         self.train_X, self.train_y = format_data(raw_train)
         self.test_X, self.test_y = format_data(raw_test)
 
-    def get_dataset(self, n, get="train", rng=None, binarize=False, centered=False, normalize=False):
+    def get_dataset(self, n, get="train", rng=None, binarize=False, centered=False, normalize=False, **dataargs):
         """Generate an image dataset.
 
         n (int): the dataset size
@@ -280,12 +275,3 @@ class ImageData():
         if self.transform:
             img = self.transform(img)
         return img, label
-    
-    def get_train_test_dataset(self, n_train, n_test, **kwargs):
-        X_train, y_train = self.get_dataset(n_train, get='train', centered=kwargs.get("center", False), normalize=kwargs.get("normalize", False))
-        X_test, y_test = self.get_dataset(n_test, get='test', centered=kwargs.get("center", False), normalize=kwargs.get("normalize", False))
-        X_train, y_train, X_test, y_test = [ensure_torch(t) for t in (X_train, y_train, X_test, y_test)]
-        X_train = rearrange(X_train, 'Ntrain c h w -> Ntrain (c h w)')
-        X_test = rearrange(X_test, 'Ntest c h w -> Ntest (c h w)')
-
-        return X_train, y_train, X_test, y_test
