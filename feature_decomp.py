@@ -35,7 +35,7 @@ def get_fra_eigval(data_eigvals, monomial, eval_level_coeff):
     return fra_eigval
 
 
-def generate_fra_monomials(data_covar_eigvals, num_monomials, eval_level_coeff, kmax=20):
+def generate_fra_monomials(data_covar_eigvals, num_monomials, eval_level_coeff, kmax=10):
     """
     Generates monomials through a greedy search.
 

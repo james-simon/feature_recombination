@@ -79,11 +79,6 @@ class Kernel:
         self.eigvals = None
         self.eigvecs = None
 
-    def set_K(self, K):
-        self.K = K
-        self.eigvals = None
-        self.eigvecs = None
-
     def eigenvals(self):
         if self.eigvals is None:
             n = self.X.shape[0]
@@ -111,6 +106,24 @@ class Kernel:
         assert torch.all(dX.T == dX), "dX must be symmetric"
         assert torch.all(dX >= 0), "dX must be nonnegative"
         return dX
+    
+    def serialize(self):
+        return {
+            "X": ensure_numpy(self.X),
+            "K": ensure_numpy(self.K),
+            "eigvals": ensure_numpy(self.eigvals),
+            "eigvecs": ensure_numpy(self.eigvecs)
+        }
+    
+    @classmethod
+    def deserialize(cls, data):
+        obj = cls(**data)
+        obj.K = ensure_torch(data["K"])
+        if data["eigvals"] is not None:
+            obj.eigvals = ensure_torch(data["eigvals"])
+        if data["eigvecs"] is not None:
+            obj.eigvecs = ensure_torch(data["eigvecs"])
+        return obj
 
 
 class ExponentialKernel(Kernel):
@@ -128,6 +141,17 @@ class ExponentialKernel(Kernel):
         def eval_level_coeff(ell):
             return effective_bandwidth**(-ell)
         return eval_level_coeff
+    
+    def serialize(self):
+        data = super().serialize()
+        data["kernel_width"] = self.kernel_width
+        return data
+    
+    @classmethod
+    def deserialize(cls, data):
+        obj = super().deserialize(data)
+        obj.kernel_width = data["kernel_width"]
+        return obj
 
 
 class DotProdKernel(Kernel):
@@ -155,6 +179,19 @@ class DotProdKernel(Kernel):
                 return 0
             return coeffs[ell] * effective_bandwidth**(-ell)
         return eval_level_coeff
+    
+    def serialize(self):
+        data = super().serialize()
+        data["kernel_width"] = self.kernel_width
+        data["coeffs"] = self.coeffs
+        return data
+    
+    @classmethod
+    def deserialize(cls, data):
+        obj = super().deserialize(data)
+        obj.kernel_width = data["kernel_width"]
+        obj.coeffs = data["coeffs"]
+        return obj
 
 
 class GaussianKernel(Kernel):
@@ -171,6 +208,17 @@ class GaussianKernel(Kernel):
         def eval_level_coeff(ell):
             return np.exp(-1/effective_bandwidth) * effective_bandwidth**(-ell)
         return eval_level_coeff
+    
+    def serialize(self):
+        data = super().serialize()
+        data["kernel_width"] = self.kernel_width
+        return data
+    
+    @classmethod
+    def deserialize(cls, data):
+        obj = super().deserialize(data)
+        obj.kernel_width = data["kernel_width"]
+        return obj
 
 
 class LaplaceKernel(Kernel):
@@ -199,56 +247,67 @@ class LaplaceKernel(Kernel):
         def eval_level_coeff(ell):
             return np.exp(-1/s_eff) * bessel_poly(ell-1) / ((2*s_eff)**ell)
         return eval_level_coeff
+    
+    def serialize(self):
+        data = super().serialize()
+        data["kernel_width"] = self.kernel_width
+        return data
+    
+    @classmethod
+    def deserialize(cls, data):
+        obj = super().deserialize(data)
+        obj.kernel_width = data["kernel_width"]
+        return obj
 
 
-class ReluNNGPKernel(Kernel):
+# class ReluNNGPKernel(Kernel):
 
-    def __init__(self, X, **kwargs):
-        super().__init__(X)
-        norms = torch.linalg.norm(self.X, dim=-1, keepdim=True)
-        K_norm = norms @ norms.T
-        theta = torch.acos((self.X @ self.X.T / K_norm).clip(-1, 1))
-        angular = torch.sin(theta) + (np.pi - theta)*torch.cos(theta)
-        self.K = 1/(2*np.pi) * K_norm * angular
+#     def __init__(self, X, **kwargs):
+#         super().__init__(X)
+#         norms = torch.linalg.norm(self.X, dim=-1, keepdim=True)
+#         K_norm = norms @ norms.T
+#         theta = torch.acos((self.X @ self.X.T / K_norm).clip(-1, 1))
+#         angular = torch.sin(theta) + (np.pi - theta)*torch.cos(theta)
+#         self.K = 1/(2*np.pi) * K_norm * angular
 
-    @staticmethod
-    def get_level_coeff_fn(data_eigvals, **kwargs):
-        q = data_eigvals.sum().item()
-        numerator = {
-            0: 1,
-            1: np.pi / 2,
-            2: 1,
-            3: 0,
-            4: 1,
-            5: 0,
-            6: 9,
-            7: 0,
-            8: 225,
-            9: 0,
-            10: 11025,
-        }
+#     @staticmethod
+#     def get_level_coeff_fn(data_eigvals, **kwargs):
+#         q = data_eigvals.sum().item()
+#         numerator = {
+#             0: 1,
+#             1: np.pi / 2,
+#             2: 1,
+#             3: 0,
+#             4: 1,
+#             5: 0,
+#             6: 9,
+#             7: 0,
+#             8: 225,
+#             9: 0,
+#             10: 11025,
+#         }
 
-        def eval_level_coeff(ell):
-            assert ell in numerator, f"level coeff {ell} not solved (sorry!)"
-            f = numerator[ell] / q**ell
-            return f * q / (2*np.pi)
-        return eval_level_coeff
+#         def eval_level_coeff(ell):
+#             assert ell in numerator, f"level coeff {ell} not solved (sorry!)"
+#             f = numerator[ell] / q**ell
+#             return f * q / (2*np.pi)
+#         return eval_level_coeff
 
 
-class RandomFeatureKernel(Kernel):
+# class RandomFeatureKernel(Kernel):
 
-    def __init__(self, X, **kwargs):
-        super().__init__(X)
-        self.nonlinearity = kwargs["nonlinearity"]
-        self.num_features = kwargs["num_features"]
-        self.randomize_features(self.num_features)
+#     def __init__(self, X, **kwargs):
+#         super().__init__(X)
+#         self.nonlinearity = kwargs["nonlinearity"]
+#         self.num_features = kwargs["num_features"]
+#         self.randomize_features(self.num_features)
 
-    def randomize_features(self, num_features=None):
-        if num_features is None:
-            num_features = self.num_features
-        d = self.X.shape[1]
-        W = ensure_torch(torch.normal(0, 1/np.sqrt(d), size=(d, num_features)))
-        features = self.X @ W
-        if self.nonlinearity:
-            features = self.nonlinearity(features)
-        self.set_K(features @ features.T)
+#     def randomize_features(self, num_features=None):
+#         if num_features is None:
+#             num_features = self.num_features
+#         d = self.X.shape[1]
+#         W = ensure_torch(torch.normal(0, 1/np.sqrt(d), size=(d, num_features)))
+#         features = self.X @ W
+#         if self.nonlinearity:
+#             features = self.nonlinearity(features)
+#         self.set_K(features @ features.T)
