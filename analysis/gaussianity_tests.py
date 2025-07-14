@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.stats import norm
 import torch
-from utils import ensure_numpy, ensure_torch, grab_eigval_distributions
+from utils import ensure_numpy, ensure_torch 
 from .independence_tests import independentize_data
 
 def get_emperical_pdf(X, num_bins=100, tol=1e-3):

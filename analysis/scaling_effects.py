@@ -2,7 +2,7 @@ from itertools import product
 import numpy as np
 import torch
 
-from utils import ensure_torch, get_structure
+from utils import ensure_torch, get_standard_tools
 # from utils.hermite import generate_fra_monomials, get_matrix_hermites
 
 def generate_configs(params):
@@ -43,7 +43,7 @@ def generate_data(config):
     data_eigvals /= data_eigvals.sum()
     X = ensure_torch(torch.normal(0, 1, (N, d))).to(DEVICE) * torch.sqrt(data_eigvals).to(DEVICE)
     
-    monomials, kernel, H, fra_eigvals, data_eigvals = get_structure(X, kerneltype, kernel_width, data_eigvals=data_eigvals)
+    monomials, kernel, H, fra_eigvals, data_eigvals = get_standard_tools(X, kerneltype, kernel_width, data_eigvals=data_eigvals)
     
     kernel_eigvals, _ = kernel.eigendecomp()
 
