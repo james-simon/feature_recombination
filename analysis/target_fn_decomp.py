@@ -2,8 +2,9 @@ import numpy as np
 import torch
 from itertools import product
 
-from utils import ensure_torch, find_iterables, find_statics, get_standard_tools
-from data import get_synthetic_dataset, ImageData
+from utils import ensure_torch, find_iterables, find_statics
+from tools import get_standard_tools
+from data_old import get_synthetic_dataset, ImageData
 from kernels import krr
 
 def get_vtilde(H, y, method = "LSTSQ", **kwargs):

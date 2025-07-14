@@ -6,7 +6,8 @@ from torchvision.transforms import functional as transformsF, ToTensor
 import torch.nn.functional as F
 
 from einops import rearrange
-from utils import ensure_torch, get_matrix_hermites
+from utils import ensure_torch
+from data import get_matrix_hermites
 from kernels import GaussianKernel
 from feature_decomp import generate_fra_monomials
 

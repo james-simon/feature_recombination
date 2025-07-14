@@ -1,7 +1,7 @@
 import torch
 from .gaussianity_tests import gaussianize_marginals, gaussianize_data
 from .independence_tests import independentize_data
-from utils import get_standard_tools
+from tools import get_standard_tools
 
 def full_analysis(X, kerneltype, kernel_width, top_fra_eigmode=3000):
     X_gaussian = gaussianize_marginals(X)
