@@ -2,7 +2,8 @@ from itertools import product
 import numpy as np
 import torch
 
-from utils import ensure_torch, get_standard_tools
+from utils import ensure_torch
+from tools import get_standard_tools
 # from utils.hermite import generate_fra_monomials, get_matrix_hermites
 
 def generate_configs(params):
