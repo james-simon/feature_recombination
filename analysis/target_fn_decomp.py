@@ -5,7 +5,7 @@ from itertools import product
 from utils import ensure_torch, find_iterables, find_statics
 from tools import get_standard_tools
 from data_old import get_synthetic_dataset, ImageData
-from kernels import krr
+from tools import find_beta
 
 def get_vtilde(H, y, method = "LSTSQ", **kwargs):
     """
@@ -27,47 +27,26 @@ def get_vtilde(H, y, method = "LSTSQ", **kwargs):
 
     return v_tilde
 
-def sample_v_tilde(H=None, v_true=None, y=None, top_fra_eigmode=None, n=10, n_trials=20, method="LSTSQ", verbose_every=5, y_normalize=False, **kwargs):
+def sample_v_tilde(H=None, v_true=None, y=None, top_fra_eigmode=None, n=10, n_trials=20, method="LSTSQ", verbose_every=5, eigcoeff_normalized=False, **kwargs):
     """
     Samples v_tilde by randomly selecting n samples from H and y.
     """
     Nmax = H.shape[0]
     v_tildes = torch.zeros(top_fra_eigmode, n_trials)
     residuals = torch.zeros(n_trials)
-    norm_amount = np.sqrt(n) if y_normalize else 1
     for trial_idx in range(n_trials):
         if verbose_every is not None and not trial_idx%verbose_every:
             print(f"Starting run {trial_idx}")
         random_sampling = np.random.choice(Nmax, size=n, replace=False)
-        v_tilde = get_vtilde(H[random_sampling, :top_fra_eigmode], y[random_sampling]/norm_amount, method=method, **kwargs)
+        v_tilde = get_vtilde(H[random_sampling, :top_fra_eigmode], y[random_sampling], method=method, **kwargs)
+        v_tilde = v_tilde/torch.linalg.norm(v_tilde) if eigcoeff_normalized else v_tilde
         v_tildes[:, trial_idx] = v_tilde
         if v_true is not None:
             err = H[:, :top_fra_eigmode] @ (v_tilde - v_true[:top_fra_eigmode]) + H[:, top_fra_eigmode:] @ v_true[top_fra_eigmode:]
-            
         else:
             err = H[:, :top_fra_eigmode] @ v_tilde - y
         residuals[trial_idx] = (err**2).sum()
     return v_tildes, residuals
-
-def find_beta(K, y, num_estimators=20, n_test=100, n_trials=20, rng=np.random.default_rng(42)):
-    sizes = np.logspace(0, np.log10(K.shape[0]-n_test), num=num_estimators)
-    K = ensure_torch(K)
-    y = ensure_torch(y)
-    test_mses = np.zeros((n_trials, num_estimators))
-    for i, n in enumerate(sizes):
-        K_sub = K[:n, :n]
-        for trial in range(n_trials):
-            idxs = rng.choice(K_sub.shape[0], size=(n+n_test), replace=False)
-            K_sub, y_sub = K[idxs[:, None], idxs[None, :]], y[idxs]
-            _, test_mse, _ = krr(K_sub, y_sub, n_train=n, ridge=1e-10)
-            test_mses[trial, i] = test_mse
-            torch.cuda.empty_cache()
-        
-    log_test_mses = np.log(test_mses.mean(axis=-1))
-    log_sizes = np.log(sizes)
-    beta = torch.linalg.lstsq(ensure_torch(log_sizes[:, None]), ensure_torch(log_test_mses)).solution.squeeze()
-    
-    return beta+1
 
 def get_eigencoeffs(X=None, y=None, dataset_name="cifar10", n_train=None, n_test=None, kerneltype=None, kernel_width=2, beta=None,
                     num_estimators=20, n_trials=20, n_trials_beta=10, rng=np.random.default_rng(42), kappa=None, ridge=None,
@@ -99,35 +78,36 @@ def get_eigencoeffs(X=None, y=None, dataset_name="cifar10", n_train=None, n_test
     monomials, kernel, H, fra_eigvals, data_eigvals = get_standard_tools(X, kerneltype, kernel_width, top_mode_idx = X.shape[0], data_eigvals = None, kmax=10)
 
     K = kernel.K
-    if beta is not None:
-        beta = find_beta(K, y, num_estimators=num_estimators, n_test=n_test, n_trials=n_trials_beta)
+    intercept = None #force in case beta is given
+    if beta is None:
+        beta, intercept = find_beta(K, y, num_estimators=num_estimators, n_test=n_test, n_trials=n_trials_beta)
     P_optimal = (beta-1)/beta*n_tot
-    eigencoeffs , _ = sample_v_tilde(H, y=y, top_fra_eigmode=P_optimal, n=n_tot, n_trials=n_trials, method="LSTSQ", verbose_every=None, y_normalize=False)
-    train_mse = ((H[:, :P_optimal] @ eigencoeffs - y)**2).sum()
+    eigencoeffs, train_mse = sample_v_tilde(H, y=y, top_fra_eigmode=P_optimal, n=n_tot, n_trials=n_trials, method="LSTSQ", verbose_every=None, eigcoeff_normalized=False)
     if kappa is None:
         test_mse = train_mse * (n_tot/(n_tot-P_optimal))**(2.)
     else:
         test_mse = train_mse * (n_tot*kappa/ridge)**(2.)
+    
     noise_var = test_mse/n_tot
 
     retdict = {"eigencoeffs": eigencoeffs, "P_optimal": P_optimal, "N":n_tot, "kernel": K, "test_mse": test_mse,
                "monomials": monomials, "H": H, "fra_eigvals": fra_eigvals, "data_eigvals": data_eigvals,
-               "eigcoeff_var": noise_var}
+               "eigcoeff_var": noise_var, "beta": beta, "intercept": intercept}
     return retdict
 
-def dirac_eigencoeffs(H=None, y=None, n=10, n_trials=20, method="LSTSQ", verbose_every=5, y_normalize=False, **kwargs):
+def dirac_eigencoeffs(H=None, y=None, n=10, n_trials=20, method="LSTSQ", verbose_every=5, eigcoeff_normalized=False, **kwargs):
     """
     Try to estimate v_tilde by getting coefficients one at a time.
     """
     Nmax, num_eigvecs = H.shape
     v_tildes = torch.zeros(num_eigvecs, n_trials)
-    norm_amount = np.sqrt(n) if y_normalize else 1
     for eigvec in range(num_eigvecs):
         for trial_idx in range(n_trials):
             if verbose_every is not None and not trial_idx%verbose_every:
                 print(f"Starting run {trial_idx}")
             random_sampling = np.random.choice(Nmax, size=n, replace=False)
-            v_tilde = get_vtilde(H[random_sampling, eigvec].unsqueeze(1), y[random_sampling]/norm_amount, method=method, **kwargs)
+            v_tilde = get_vtilde(H[random_sampling, eigvec].unsqueeze(1), y[random_sampling], method=method, **kwargs)
+            v_tilde = v_tilde/torch.linalg.norm(v_tilde) if eigcoeff_normalized else v_tilde
             v_tildes[:, trial_idx] = v_tilde
     return v_tildes
 
