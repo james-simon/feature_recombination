@@ -70,7 +70,8 @@ def find_beta(K, y, num_estimators=20, n_test=100, n_trials=20, rng=np.random.de
     return beta+1
 
 def get_eigencoeffs(X=None, y=None, dataset_name="cifar10", n_train=None, n_test=None, kerneltype=None, kernel_width=2, beta=None,
-                    num_estimators=20, n_trials=20, n_trials_beta=10, rng=np.random.default_rng(42), **dataargs):
+                    num_estimators=20, n_trials=20, n_trials_beta=10, rng=np.random.default_rng(42), kappa=None, ridge=None,
+                    **dataargs):
     """
     From a dataset, estimates eigencoefficients
     
@@ -102,10 +103,16 @@ def get_eigencoeffs(X=None, y=None, dataset_name="cifar10", n_train=None, n_test
         beta = find_beta(K, y, num_estimators=num_estimators, n_test=n_test, n_trials=n_trials_beta)
     P_optimal = (beta-1)/beta*n_tot
     eigencoeffs , _ = sample_v_tilde(H, y=y, top_fra_eigmode=P_optimal, n=n_tot, n_trials=n_trials, method="LSTSQ", verbose_every=None, y_normalize=False)
-    test_mse = ((H[:, :P_optimal] @ eigencoeffs - y)**2).sum()
+    train_mse = ((H[:, :P_optimal] @ eigencoeffs - y)**2).sum()
+    if kappa is None:
+        test_mse = train_mse * (n_tot/(n_tot-P_optimal))**(2.)
+    else:
+        test_mse = train_mse * (n_tot*kappa/ridge)**(2.)
+    noise_var = test_mse/n_tot
 
     retdict = {"eigencoeffs": eigencoeffs, "P_optimal": P_optimal, "N":n_tot, "kernel": K, "test_mse": test_mse,
-               "monomials": monomials, "H": H, "fra_eigvals": fra_eigvals, "data_eigvals": data_eigvals}
+               "monomials": monomials, "H": H, "fra_eigvals": fra_eigvals, "data_eigvals": data_eigvals,
+               "eigcoeff_var": noise_var}
     return retdict
 
 def dirac_eigencoeffs(H=None, y=None, n=10, n_trials=20, method="LSTSQ", verbose_every=5, y_normalize=False, **kwargs):
