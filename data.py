@@ -56,7 +56,7 @@ def get_hermite_target(H, squared_coeffs, noise_var=0):
     snr = np.inf
     if noise_var:
         noise = ensure_torch(torch.normal(0, np.sqrt(noise_var / N), y.shape))
-        snr = torch.linalg.norm(y) / torch.linalg.norm(noise)
+        snr = y @ y / (noise @ noise)
         y += noise
     # we expect size(y_i) ~ 1
     y = np.sqrt(N) * y / torch.linalg.norm(y)
