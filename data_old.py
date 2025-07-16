@@ -108,6 +108,7 @@ def get_synthetic_dataset(X=None, data_eigvals=None, ytype="Gaussian", d=500, N=
                           noise_size=0.1, normalized=True, **vargs):
     """
     y_type: One of \"Gaussian\", \"Uniform\", \"Isotropic\", \"Binarized\", "\PowerLaw\", \"OneHot\", \"NHot\"
+    noise_size: total noise size of the N-dim target vector y
     """
     if X is None:
         X, data_eigvals = get_synthetic_X(d=d, N=N, offset=offset, alpha=alpha)
@@ -119,7 +120,7 @@ def get_synthetic_dataset(X=None, data_eigvals=None, ytype="Gaussian", d=500, N=
     fra_eigvals = ensure_torch(fra_eigvals)
     v_true = get_v_true(fra_eigvals, ytype, noise_size=noise_size, H=H, **vargs)
     v_true = v_true if not normalized else v_true/torch.linalg.norm(v_true)
-    y = ensure_torch(H) @ v_true + ensure_torch(torch.normal(0., noise_size, (H.shape[0],)))
+    y = ensure_torch(H) @ v_true + ensure_torch(torch.normal(0., noise_size/H.shape[0]**(0.5), (H.shape[0],)))
     return X, y, H, monomials, fra_eigvals, v_true
 
 class SyntheticDataset(Dataset):
@@ -234,7 +235,7 @@ class ImageData():
         self.train_X, self.train_y = format_data(raw_train)
         self.test_X, self.test_y = format_data(raw_test)
 
-    def get_dataset(self, n, get="train", rng=None, binarize=False, centered=False, normalize=False):
+    def get_dataset(self, n, get="train", rng=None, binarize=False, centered=False, normalize=False, **datasetargs):
         """Generate an image dataset.
 
         n (int): the dataset size
@@ -281,12 +282,3 @@ class ImageData():
         if self.transform:
             img = self.transform(img)
         return img, label
-    
-    def get_train_test_dataset(self, n_train, n_test, **kwargs):
-        X_train, y_train = self.get_dataset(n_train, get='train', centered=kwargs.get("center", False), normalize=kwargs.get("normalize", False))
-        X_test, y_test = self.get_dataset(n_test, get='test', centered=kwargs.get("center", False), normalize=kwargs.get("normalize", False))
-        X_train, y_train, X_test, y_test = [ensure_torch(t) for t in (X_train, y_train, X_test, y_test)]
-        X_train = rearrange(X_train, 'Ntrain c h w -> Ntrain (c h w)')
-        X_test = rearrange(X_test, 'Ntest c h w -> Ntest (c h w)')
-
-        return X_train, y_train, X_test, y_test

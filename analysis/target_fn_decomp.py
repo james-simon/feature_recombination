@@ -49,50 +49,47 @@ def sample_v_tilde(H=None, v_true=None, y=None, top_fra_eigmode=None, n=10, n_tr
     return v_tildes, residuals
 
 def get_eigencoeffs(X=None, y=None, dataset_name="cifar10", n_train=None, n_test=None, kerneltype=None, kernel_width=2, beta=None,
-                    num_estimators=20, n_trials=20, n_trials_beta=10, rng=np.random.default_rng(42), kappa=None, ridge=None,
+                    num_estimators=20, n_trials=20, n_trials_beta=10, rng=np.random.default_rng(42), kappa=None, ridge=None, P_optimal=None,
                     **dataargs):
     """
     From a dataset, estimates eigencoefficients
     
     Returns dict of eigencoefficients, optimal num eigenmodes considered, """
+
     if X is None:
-        data_dir = dataargs.get("data_dir", 'data_dir')
-        classes = dataargs.get("classes", None)
-        onehot = dataargs.get("onehot", False)
-        format = dataargs.get("format", 'N')
-        # remove above from dataargs
-        dataargs = {k: v for k, v in dataargs.items() if k not in ["data_dir", "classes", "onehot", "format"]}
+        imdata = ImageData(dataset_name, **dataargs)
         
-        # there's a dataargs for imdata, but that's just for transformations
-        imdata = ImageData(dataset_name, data_dir, classes=classes, onehot=onehot, format=format)
-        
-        X_train, y_train = imdata.get_dataset(n_train, get='train', rng=rng, dataargs=dataargs)
-        X_test, y_test = imdata.get_dataset(n_test, get='test', rng=rng, dataargs=dataargs)
+        X_train, y_train = imdata.get_dataset(n_train, get='train', rng=rng, **dataargs)
+        X_test, y_test = imdata.get_dataset(n_test, get='test', rng=rng, **dataargs)
         X_train, y_train, X_test, y_test = [ensure_torch(t) for t in (X_train, y_train, X_test, y_test)]
-        X = torch.vstack(X_train, X_test)
-        y = torch.vstack(y_train, y_test)
+        X = torch.vstack((X_train, X_test))
+        y = torch.vstack((y_train, y_test)).squeeze()
     
     n_tot = n_train+n_test
     assert n_tot == len(y), "Error found while evaluating the number of samples in the dataset"
     
     monomials, kernel, H, fra_eigvals, data_eigvals = get_standard_tools(X, kerneltype, kernel_width, top_mode_idx = X.shape[0], data_eigvals = None, kmax=10)
 
-    K = kernel.K
-    intercept = None #force in case beta is given
-    if beta is None:
-        beta, intercept = find_beta(K, y, num_estimators=num_estimators, n_test=n_test, n_trials=n_trials_beta)
-    P_optimal = (beta-1)/beta*n_tot
+    if P_optimal is None:
+        K = kernel.K
+        intercept = None #force in case beta is given
+        if beta is None:
+            beta, intercept = find_beta(K, y, num_estimators=num_estimators, n_test=n_test, n_trials=n_trials_beta)
+            # print(f"Found beta = {beta}")
+        P_optimal = int((beta-1)/beta*n_tot)
     eigencoeffs, train_mse = sample_v_tilde(H, y=y, top_fra_eigmode=P_optimal, n=n_tot, n_trials=n_trials, method="LSTSQ", verbose_every=None, eigcoeff_normalized=False)
+    train_mse = train_mse[0]
     if kappa is None:
         test_mse = train_mse * (n_tot/(n_tot-P_optimal))**(2.)
     else:
         test_mse = train_mse * (n_tot*kappa/ridge)**(2.)
     
     noise_var = test_mse/n_tot
+    good_indices = ((eigencoeffs.mean(axis=-1))**(2)/noise_var > 1)
 
     retdict = {"eigencoeffs": eigencoeffs, "P_optimal": P_optimal, "N":n_tot, "kernel": K, "test_mse": test_mse,
                "monomials": monomials, "H": H, "fra_eigvals": fra_eigvals, "data_eigvals": data_eigvals,
-               "eigcoeff_var": noise_var, "beta": beta, "intercept": intercept}
+               "eigcoeff_var": noise_var, "beta": beta, "intercept": intercept, "resolveable_indices": good_indices}
     return retdict
 
 def dirac_eigencoeffs(H=None, y=None, n=10, n_trials=20, method="LSTSQ", verbose_every=5, eigcoeff_normalized=False, **kwargs):
