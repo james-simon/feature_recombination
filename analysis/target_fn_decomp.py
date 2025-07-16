@@ -71,8 +71,8 @@ def get_eigencoeffs(X=None, y=None, dataset_name="cifar10", n_train=None, n_test
     monomials, kernel, H, fra_eigvals, data_eigvals = get_standard_tools(X, kerneltype, kernel_width, top_mode_idx = X.shape[0], data_eigvals = None, kmax=10)
 
     K = kernel.K
+    intercept = None #force in case beta is given
     if P_optimal is None:
-        intercept = None #force in case beta is given
         if beta is None:
             beta, intercept = find_beta(K, y, num_estimators=num_estimators, n_test=n_test, n_trials=n_trials_beta)
             # print(f"Found beta = {beta}")
