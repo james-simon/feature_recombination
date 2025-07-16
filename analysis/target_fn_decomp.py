@@ -45,7 +45,7 @@ def sample_v_tilde(H=None, v_true=None, y=None, top_fra_eigmode=None, n=10, n_tr
             err = H[:, :top_fra_eigmode] @ (v_tilde - v_true[:top_fra_eigmode]) + H[:, top_fra_eigmode:] @ v_true[top_fra_eigmode:]
         else:
             err = H[:, :top_fra_eigmode] @ v_tilde - y
-        residuals[trial_idx] = (err**2).sum()
+        residuals[trial_idx] = (err**2).mean()
     return v_tildes, residuals
 
 def get_eigencoeffs(X=None, y=None, dataset_name="cifar10", n_train=None, n_test=None, kerneltype=None, kernel_width=2, beta=None,
