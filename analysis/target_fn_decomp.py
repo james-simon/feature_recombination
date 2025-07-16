@@ -27,7 +27,7 @@ def get_vtilde(H, y, method = "LSTSQ", **kwargs):
 
     return v_tilde
 
-def sample_v_tilde(H=None, v_true=None, y=None, top_fra_eigmode=None, n=10, n_trials=20, method="LSTSQ", verbose_every=5, eigcoeff_normalized=False, **kwargs):
+def sample_v_tilde(H=None, v_true=None, y=None, top_fra_eigmode=None, n=10, n_trials=20, method="LSTSQ", verbose_every=5, eigcoeff_normalized=True, **kwargs):
     """
     Samples v_tilde by randomly selecting n samples from H and y.
     """
@@ -39,13 +39,13 @@ def sample_v_tilde(H=None, v_true=None, y=None, top_fra_eigmode=None, n=10, n_tr
             print(f"Starting run {trial_idx}")
         random_sampling = np.random.choice(Nmax, size=n, replace=False)
         v_tilde = get_vtilde(H[random_sampling, :top_fra_eigmode], y[random_sampling], method=method, **kwargs)
-        v_tilde = v_tilde/torch.linalg.norm(v_tilde) if eigcoeff_normalized else v_tilde
-        v_tildes[:, trial_idx] = v_tilde
         if v_true is not None:
             err = H[:, :top_fra_eigmode] @ (v_tilde - v_true[:top_fra_eigmode]) + H[:, top_fra_eigmode:] @ v_true[top_fra_eigmode:]
         else:
             err = H[:, :top_fra_eigmode] @ v_tilde - y
         residuals[trial_idx] = (err**2).mean()
+        v_tilde = v_tilde/torch.linalg.norm(v_tilde) if eigcoeff_normalized else v_tilde
+        v_tildes[:, trial_idx] = v_tilde
     return v_tildes, residuals
 
 def get_eigencoeffs(X=None, y=None, dataset_name="cifar10", n_train=None, n_test=None, kerneltype=None, kernel_width=2, beta=None,
@@ -74,10 +74,10 @@ def get_eigencoeffs(X=None, y=None, dataset_name="cifar10", n_train=None, n_test
     intercept = None #force in case beta is given
     if P_optimal is None:
         if beta is None:
-            beta, intercept = find_beta(K, y, num_estimators=num_estimators, n_test=n_test, n_trials=n_trials_beta)
+            beta, intercept, _, _ = find_beta(K, y, num_estimators=num_estimators, n_test=n_test, n_trials=n_trials_beta)
             # print(f"Found beta = {beta}")
         P_optimal = int((beta-1)/beta*n_tot)
-    eigencoeffs, train_mse = sample_v_tilde(H, y=y, top_fra_eigmode=P_optimal, n=n_tot, n_trials=n_trials, method="LSTSQ", verbose_every=None, eigcoeff_normalized=False)
+    eigencoeffs, train_mse = sample_v_tilde(H, y=y, top_fra_eigmode=P_optimal, n=n_tot, n_trials=n_trials, method="LSTSQ", verbose_every=None, eigcoeff_normalized=True)
     train_mse = train_mse[0]
     if kappa is None:
         test_mse = train_mse * (n_tot/(n_tot-P_optimal))**(2.)
@@ -92,7 +92,7 @@ def get_eigencoeffs(X=None, y=None, dataset_name="cifar10", n_train=None, n_test
                "eigcoeff_var": noise_var, "beta": beta, "intercept": intercept, "resolveable_indices": good_indices}
     return retdict
 
-def dirac_eigencoeffs(H=None, y=None, n=10, n_trials=20, method="LSTSQ", verbose_every=5, eigcoeff_normalized=False, **kwargs):
+def dirac_eigencoeffs(H=None, y=None, n=10, n_trials=20, method="LSTSQ", verbose_every=5, eigcoeff_normalized=True, **kwargs):
     """
     Try to estimate v_tilde by getting coefficients one at a time.
     """
@@ -163,15 +163,3 @@ def v_tilde_p_experiment(top_fra_eigmodes, H, y, n, n_trials=20, minmode=True, m
     if minmode:
         return all_v_tildes.squeeze()
     return all_v_tildes
-
-#not super useful
-def get_y_recon(H, v_tilde, y,):
-    y_pred = (ensure_torch(H) @ v_tilde).squeeze()
-    # err = ((y-y_pred)**2).mean()
-    if y.ndim >= 2:
-        y = np.argmax(y, axis=1)
-    y_non_onehot_np = y.cpu().numpy()
-    y_pred_np = y_pred.cpu().numpy()
-
-    y_pred_sorted = [y_pred_np[y_non_onehot_np == i] for i in np.unique(y_non_onehot_np)]
-    return y_pred_sorted
