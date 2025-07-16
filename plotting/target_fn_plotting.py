@@ -4,29 +4,56 @@ import matplotlib.pyplot as plt
 
 from utils import ensure_numpy, ensure_torch
 
+#helper function
+def _get_avg_vtilde(v_tildes, mons, error_mode=None, transform_fn=lambda x: x**2):
+    avg_v = transform_fn(v_tildes).mean(axis=1)
+    if error_mode == "var":
+        err_v = v_tildes.var(axis=-1)
+    elif error_mode == "quartiles":
+        p25 = np.percentile(transform_fn(v_tildes), 25, axis=1)
+        p75 = np.percentile(transform_fn(v_tildes), 75, axis=1)
+        err_v = np.vstack((ensure_numpy(avg_v) - p25, p75 - ensure_numpy(avg_v))).T
+    elif error_mode == "std":
+        err_v = transform_fn(v_tildes.std(axis=1))
+    else:
+        err_v = None
+    
+    num_terms = len(avg_v)
+    indices = np.linspace(1, num_terms+1, num_terms)
+    degrees = np.array([monomial.degree() for monomial in mons[:num_terms]])
+    return avg_v, err_v, indices, degrees
+
+def plot_eigencoeffs(eigcoeff_dict, title="", avg_mode="squared",
+                    colors = None, noise_floor=False, **kwargs):
+    """
+    Intended to be used alongside get_eigencoeffs() to plot the eigencoefficients against the noise floor.
+    """
+    assert avg_mode in ["squared", "abs"], "Averaging method not found"
+    colors = colors if colors is not None else ['xkcd:red', 'xkcd:orange', 'xkcd:gold', 'xkcd:green', 'xkcd:blue', "xkcd:purple", "xkcd:black"]
+    
+    transform_fn = lambda x: np.abs(x) if avg_mode == "abs" else x**2
+    avg_v, _, indices, degrees = _get_avg_vtilde(eigcoeff_dict['eigencoeffs'], eigcoeff_dict['monomials'])
+
+    for degree in np.unique(degrees):
+        idxs = np.where(np.array(degrees) == degree)[0]
+        plt.scatter(indices[idxs], avg_v[idxs], color=colors[degree%7], linestyle='', marker='.', alpha=1/(degree+1),)
+    
+    plt.plot(np.linspace(1, len(avg_v)+1, len(avg_v)), eigcoeff_dict['eigcoeff_var']*np.ones(len(avg_v)), color='xkcd:slate', alpha=1, zorder=4)
+
+    plt.title(title)
+    plt.xlabel("Index")
+    ylabel = "Eigencoeff Squared $\\hat{{v}}_i^2$" if avg_mode == "squared" else "AbsVal of Eigencoeff $|\\hat{{v}}_i|$"
+    plt.ylabel(ylabel)
+    plt.xscale("log")
+    plt.yscale("log")    
 
 #Note: this is refactored, there used to be functionality when axes was not defined.
 #      if axes is not given, it will no longer use plt.plot()
-def plot_eigencoeffs(all_v_tildes, monomials, axes=None, fig=None, titles=None, suptitle="", avg_mode="squared",
+def plot_multiple_eigencoeffs(all_v_tildes, monomials, axes=None, fig=None, titles=None, suptitle="", avg_mode="squared",
                      error_mode="var", colors = None, errorbars=True, **kwargs):
     """
     Plots eigencoefficients across multiple runs.
     """
-    def _get_avg_vtilde(v_tildes, mons):
-        avg_v = transform_fn(v_tildes).mean(axis=1)
-        if error_mode == "var":
-            err_v = v_tildes.var(axis=-1)
-        elif error_mode == "quartiles":
-            p25 = np.percentile(transform_fn(v_tildes), 25, axis=1)
-            p75 = np.percentile(transform_fn(v_tildes), 75, axis=1)
-            err_v = np.vstack((ensure_numpy(avg_v) - p25, p75 - ensure_numpy(avg_v))).T
-        elif error_mode == "std":
-            err_v = transform_fn(v_tildes.std(axis=1))
-        
-        num_terms = len(avg_v)
-        indices = np.linspace(1, num_terms+1, num_terms)
-        degrees = np.array([monomial.degree() for monomial in mons[:num_terms]])
-        return avg_v, err_v, indices, degrees
     
     assert avg_mode in ["squared", "abs"], "Averaging method not found"
     assert error_mode in ["quartiles", "std", "var"], "Error method not found"
@@ -56,7 +83,7 @@ def plot_eigencoeffs(all_v_tildes, monomials, axes=None, fig=None, titles=None, 
             mons = monomials[i%len(monomials)]
     
         v_tildes = all_v_tildes[i]
-        avg_v, err_v, indices, degrees = _get_avg_vtilde(v_tildes, mons)
+        avg_v, err_v, indices, degrees = _get_avg_vtilde(v_tildes, mons, error_mode, transform_fn)
         for degree in np.unique(degrees):
             idxs = np.where(np.array(degrees) == degree)[0]
             if errorbars:
