@@ -1,11 +1,10 @@
 import numpy as np
 import torch
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, asdict
 import json
-import base64
 
 
-@dataclass(frozen=True)
+@dataclass
 class Hyperparams:
     expt_name: str
     dataset: str
@@ -16,8 +15,6 @@ class Hyperparams:
     # If using synth data, set these
     data_dim: int           = 200
     data_eigval_exp: float  = 1.2
-    beta: float             = 1.1
-    noise_var: float        = 0.
     # If using natural image data, set these
     zca_strength: float     = 5e-3
     
@@ -29,7 +26,7 @@ class Hyperparams:
     def generate_filepath(self):
         fp = f"{self.kernel_name}-kw:{self.kernel_width}"
         if self.dataset == "gaussian":
-            fp += f"-data:{self.data_dim}:{self.data_eigval_exp}:{self.beta}:{self.noise_var:.3f}"
+            fp += f"-data:{self.data_dim}:{self.data_eigval_exp}"
         else:
             fp += f"-zca:{self.zca_strength}"
         return fp
