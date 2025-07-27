@@ -18,14 +18,14 @@ from data import get_powerlaw, get_gaussian_data, get_matrix_hermites, get_hermi
 
 hypers = Hyperparams(
     expt_name = "hehe-eigenlearning",
-    dataset = "gaussian",
+    dataset = "cifar10",
     kernel_name = "GaussianKernel",
     kernel_width = 4,
     n_samples = 20_000,
     p_modes = 20_000,
     # If using synth data, set these
     data_dim = 200,
-    data_eigval_exp = 1.2,
+    data_eigval_exp = 1.4,
     # If using natural image data, set these
     zca_strength = 5e-3,
 )
@@ -84,9 +84,9 @@ eval_level_coeff = kerneltype.get_level_coeff_fn(data_eigvals=data_eigvals,
 hehe_eigvals, monomials = generate_fra_monomials(data_eigvals, hypers.p_modes, eval_level_coeff)
 H = get_matrix_hermites(X, monomials[:hypers.p_modes])
 
-if hypers.dataset == "gaussian":
+if True or hypers.dataset == "gaussian":
     targets = {}
-    source_exps = [1.1, 1.25, 1.5, 2.0]
+    source_exps = [1.01, 1.25, 1.5, 2.0]
     for source_exp in source_exps:
         squared_coeffs = get_powerlaw(hypers.p_modes, source_exp, offset=6)
         ystar, _ = get_hermite_target(H, squared_coeffs)
@@ -130,12 +130,15 @@ emp_eigvals, emp_eigvecs = kernel.eigendecomp()
 expt_fm.save(ensure_numpy(emp_eigvecs), "emp_eigvecs.npy")
 expt_fm.save(ensure_numpy(H), "H.npy")
 expt_fm.save(targets, "targets.pickle")
+iso_data_eigvals = torch.ones_like(data_eigvals) / len(data_eigvals)
+iso_eigvals, _ = generate_fra_monomials(iso_data_eigvals, hypers.p_modes, eval_level_coeff)
 result = {
     "monomials": [dict(m) for m in monomials],
     "d_eff": d_eff,
     "n_test": ntest,
     "emp_eigvals": ensure_numpy(emp_eigvals),
     "th_eigvals": hehe_eigvals,
+    "iso_eigvals": ensure_numpy(iso_eigvals),
     "y_hat": et_yhat.serialize()
 }
 expt_fm.save(result, "result.pickle")
