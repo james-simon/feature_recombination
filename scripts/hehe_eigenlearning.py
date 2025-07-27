@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-from einops import rearrange, reduce, repeat
+from einops import rearrange
 
 import sys
 import os
@@ -11,24 +11,21 @@ sys.path.append("../")
 from ImageData import ImageData, preprocess
 from ExptTrace import ExptTrace
 from FileManager import FileManager
-from kernels import GaussianKernel, LaplaceKernel, ExponentialKernel
+from kernels import GaussianKernel, LaplaceKernel, krr
 from feature_decomp import generate_fra_monomials
 from utils import ensure_torch, ensure_numpy, Hyperparams
 from data import get_powerlaw, get_gaussian_data, get_matrix_hermites, get_hermite_target
-to_torch = ensure_torch
 
 hypers = Hyperparams(
-    expt_name = "hehe-eigenlearning-tests",
-    dataset = "cifar10",
+    expt_name = "hehe-eigenlearning",
+    dataset = "gaussian",
     kernel_name = "GaussianKernel",
     kernel_width = 4,
     n_samples = 20_000,
-    p_modes = 10_000,
+    p_modes = 20_000,
     # If using synth data, set these
     data_dim = 200,
     data_eigval_exp = 1.2,
-    beta = 1.1,
-    noise_var = 0.1,
     # If using natural image data, set these
     zca_strength = 5e-3,
 )
@@ -43,16 +40,21 @@ if datapath is None:
 if exptpath is None:
     raise ValueError("must set $EXPTPATH environment variable")
 expt_dir = os.path.join(exptpath, "phlab", hypers.expt_name, hypers.dataset)
+expt_dir = os.path.join(expt_dir, hypers.generate_filepath())
 
 if not os.path.exists(expt_dir):
     os.makedirs(expt_dir)
 expt_fm = FileManager(expt_dir)
+print(f"Working in directory {expt_dir}.")
+hypers.save(expt_fm.get_filename("hypers.json"))
 
 # START EXPERIMENT
 ##################
 
-var_axes = ["trial", "ntrain", "ridge"]
-et_pathnames, et_emp_eigvals, et_fra_eigvals = ExptTrace.multi_init(3, var_axes)
+kerneltype = {
+    "GaussianKernel": GaussianKernel,
+    "LaplaceKernel": LaplaceKernel
+}[hypers.kernel_name]
 
 if hypers.dataset == "gaussian":
     data_eigvals = get_powerlaw(hypers.data_dim, hypers.data_eigval_exp, offset=6)
@@ -68,7 +70,6 @@ if hypers.dataset in ["cifar10", "imagenet32"]:
         data = np.load(fn)
         X_raw = data['data'][:hypers.n_samples].astype(float)
         X_raw = rearrange(X_raw, 'n (c h w) -> n c h w', c=3, h=32, w=32)
-
     X = preprocess(X_raw, center=True, grayscale=True, zca_strength=hypers.zca_strength)
     X = ensure_torch(X)
     # ensure typical sample has unit norm
@@ -78,51 +79,63 @@ if hypers.dataset in ["cifar10", "imagenet32"]:
 
 d_eff = 1/(data_eigvals**2).sum()
 
-kerneltype = {
-    "GaussianKernel": GaussianKernel,
-    "LaplaceKernel": LaplaceKernel
-}[hypers.kernel_name]
-
-subpath = f"{hypers.kernel_name}-deff{d_eff:.2f}"
-expt_fm.set_filepath(subpath)
-et_pathnames[d_eff, kernelname, kernel_width] = subpath
-
-kernel = kerneltype(X, kernel_width=kernel_width)
-eigvals, eigvecs = kernel.eigendecomp()
-expt_fm.save(kernel.serialize(), "kernel.pickle")
-
 eval_level_coeff = kerneltype.get_level_coeff_fn(data_eigvals=data_eigvals,
-                                                    kernel_width=kernel_width)
-fra_eigvals, monomials = generate_fra_monomials(data_eigvals, P_MODES, eval_level_coeff)
-H = get_matrix_hermites(X, monomials)
-expt_fm.save([dict(m) for m in monomials], "monomials.pickle")
-expt_fm.save(ensure_numpy(H), "H.npy")
+                                                 kernel_width=hypers.kernel_width)
+hehe_eigvals, monomials = generate_fra_monomials(data_eigvals, hypers.p_modes, eval_level_coeff)
+H = get_matrix_hermites(X, monomials[:hypers.p_modes])
 
-squared_coeffs = get_powerlaw(P_MODES, BETA, offset=6)
-y, _ = get_hermite_target(H, squared_coeffs, noise_var=NOISE_VAR)
+if hypers.dataset == "gaussian":
+    targets = {}
+    source_exps = [1.1, 1.25, 1.5, 2.0]
+    for source_exp in source_exps:
+        squared_coeffs = get_powerlaw(hypers.p_modes, source_exp, offset=6)
+        ystar, _ = get_hermite_target(H, squared_coeffs)
+        targets[source_exp] = ensure_numpy(ystar)
+if hypers.dataset == "cifar10":
+    pass
+if hypers.dataset == "imagenet32":
+    pass
 
-ntrains = np.logspace(1, 4, base=10, num=20).astype(int)
-et_test_mse = ExptTrace(["trial", "n"])
-et_train_mse = ExptTrace(["trial", "n"])
-ystar_idx = 5
-ridge = 1e-3
-ntrials = 5
-
+kernel = kerneltype(X, kernel_width=hypers.kernel_width)
 K = ensure_torch(kernel.K)
 
-for trial in range(ntrials):
-    for ntrain in ntrains:
-        train_mse, test_mse, yhattest = krr(K, y, ntrain, n_test=2000, ridge=ridge)
-        et_test_mse[trial, ntrain] = test_mse
-        et_train_mse[trial, ntrain] = train_mse
-et_emp_eigvals[d_eff, kernelname, kernel_width] = eigvals.cpu().numpy()
-et_fra_eigvals[d_eff, kernelname, kernel_width] = fra_eigvals
+def get_ntrials(ntrain):
+    if ntrain < 100: return 20
+    elif ntrain < 1000: return 10
+    elif ntrain < 10000: return 5
+    else: return 2
 
+ntest = 5000
+log_ntrain_max = np.log10((hypers.n_samples - ntest) / 2)
+ntrains = np.logspace(1, log_ntrain_max, base=10, num=50).astype(int)
+ridges = [1e-4]
 
+var_axes = ["trial", "ntrain", "ridge", "target"]
+et_yhat = ExptTrace(var_axes)
+
+for target, ystar in targets.items():
+    print("Starting target: ", target)
+    ystar = ensure_torch(ystar)
+    for ridge in ridges:
+        print(f"ridge={ridge}, ntrains:", end=" ", flush=True)
+        for ntrain in ntrains:
+            print(f"{ntrain}", end=" ", flush=True)
+            for trial in range(get_ntrials(ntrain)):
+                (y_hat, y_test), _ = krr(K, ystar, ntrain, n_test=ntest, ridge=ridge)
+                et_yhat[trial, ntrain, ridge, target] = y_hat.cpu().numpy()
+        print()
+    print()
+
+emp_eigvals, emp_eigvecs = kernel.eigendecomp()
+expt_fm.save(ensure_numpy(emp_eigvecs), "emp_eigvecs.npy")
+expt_fm.save(ensure_numpy(H), "H.npy")
+expt_fm.save(targets, "targets.pickle")
 result = {
-    "pathnames": et_pathnames.serialize(),
-    "emp_eigvals": et_emp_eigvals.serialize(),
-    "fra_eigvals": et_fra_eigvals.serialize(),
+    "monomials": [dict(m) for m in monomials],
+    "d_eff": d_eff,
+    "n_test": ntest,
+    "emp_eigvals": ensure_numpy(emp_eigvals),
+    "th_eigvals": hehe_eigvals,
+    "y_hat": et_yhat.serialize()
 }
-expt_fm.set_filepath("")
-expt_fm.save(result, f"result.expt")
+expt_fm.save(result, "result.pickle")

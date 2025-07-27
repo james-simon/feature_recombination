@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-from einops import rearrange, reduce, repeat
+from einops import rearrange
 
 import sys
 import os
@@ -10,7 +10,7 @@ sys.path.append("../")
 
 from ImageData import ImageData, preprocess
 from FileManager import FileManager
-from kernels import GaussianKernel, LaplaceKernel, ExponentialKernel
+from kernels import GaussianKernel, LaplaceKernel
 from feature_decomp import generate_fra_monomials
 from utils import ensure_torch, ensure_numpy, Hyperparams
 from data import get_powerlaw, get_gaussian_data, get_matrix_hermites
@@ -59,7 +59,7 @@ hypers.save(expt_fm.get_filename("hypers.json"))
 
 if hypers.dataset == "gaussian":
     data_eigvals = get_powerlaw(hypers.data_dim, hypers.data_eigval_exp, offset=6)
-    X = get_gaussian_data(hypers.n_samples, data_eigvals)    
+    X = get_gaussian_data(hypers.n_samples, data_eigvals)
 if hypers.dataset in ["cifar10", "imagenet32"]:
     if hypers.dataset == "cifar10":
         data_dir = os.path.join(datapath, "cifar10")
@@ -97,7 +97,7 @@ expt_fm.save(ensure_numpy(H), "H.npy")
 result = {
     "monomials": [dict(m) for m in monomials],
     "d_eff": d_eff,
-    "emp_eigvals": emp_eigvals.cpu().numpy(),
+    "emp_eigvals": ensure_numpy(emp_eigvals),
     "th_eigvals": hehe_eigvals
 }
 expt_fm.save(result, "result.pickle")
