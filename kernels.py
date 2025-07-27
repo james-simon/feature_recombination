@@ -23,16 +23,10 @@ def krr(K, y, n_train, n_test, ridge=0):
         alpha = torch.linalg.lstsq(K_train + ridge * eye, y_train)
 
     y_hat = K_test @ alpha.solution
-    
     y_hat_train = y_hat[:n_train]
-    train_mse = ((y_train - y_hat_train) ** 2).mean(axis=0)
-    train_mse = train_mse.sum().item()
-
     y_hat_test = y_hat[n_train:]
-    test_mse = ((y_test - y_hat_test) ** 2).mean(axis=0)
-    test_mse = test_mse.sum().item()
 
-    return train_mse, test_mse, y_hat
+    return (y_hat_test, y_test), (y_hat_train, y_train)
 
 
 def estimate_kappa(kernel, n, ridge=0):
