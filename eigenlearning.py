@@ -9,6 +9,8 @@ def eigenlearning(n, eigvals, eigcoeffs, ridge=0, noise_var=0):
         return kappa
 
     kappa = solve_kappa(n, eigvals, ridge)
+    if len(eigcoeffs) < len(eigvals):
+        eigvals = eigvals[:len(eigcoeffs)]
     learnabilities = eigvals / (eigvals + kappa)
     e0 = n / (n - (learnabilities**2).sum())
     test_mse = e0 * (((1-learnabilities)**2 * eigcoeffs**2).sum() + noise_var)
