@@ -68,7 +68,7 @@ def get_v_true(fra_eigvals, ytype='Gaussian', **kwargs):
         case "PowerLaw":
             H = kwargs.get("H", None)
             i0 = kwargs.get("vi0", 3)
-            alpha = kwargs.get("valpha", 1.5)
+            alpha = kwargs.get("beta", 1.5)
             pldim = H.shape[1]
             # pldim = kwargs.get("pldim", 400)
             pldecay = ensure_torch((i0+np.arange(pldim)) ** (-alpha/2))

@@ -38,4 +38,4 @@ def find_beta(K, y, num_estimators=20, n_test=100, n_trials=20, rng=np.random.de
     slope, intercept = sol[0], sol[1]
     beta = -slope+1
 
-    return beta, intercept
+    return beta, intercept, sizes, test_mses
