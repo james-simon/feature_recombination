@@ -46,6 +46,7 @@ def get_synthetic_X(d=500, N=15000, offset=3, alpha=1.5, **kwargs):
     """
     Powerlaw synthetic data
     """
+    data_eigvals = kwargs.get("data_eigvals", None)
     if kwargs.get("data_eigvals") is None:
         data_eigvals = ensure_torch((offset+np.arange(d)) ** -alpha)
         data_eigvals /= data_eigvals.sum()
