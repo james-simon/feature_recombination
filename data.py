@@ -1,6 +1,7 @@
 import numpy as np
 import torch as torch   
 import math
+from scipy.special import zeta
 
 from utils import ensure_torch
 
@@ -10,14 +11,6 @@ def get_powerlaw(P, exp, offset=3, normalize=True):
     if normalize:
         pl /= pl.sum()
     return pl
-
-
-def get_gaussian_data(N, data_eigvals):
-    data_eigvals = ensure_torch(data_eigvals)
-    d = len(data_eigvals)
-    # on average, we expect norm(x_i) ~ Tr(data_eigvals)
-    X = ensure_torch(torch.normal(0, 1, (N, d))) * torch.sqrt(data_eigvals)
-    return X
 
 
 def get_matrix_hermites(X, monomials):
@@ -48,16 +41,22 @@ def get_matrix_hermites(X, monomials):
     return H
 
 
-def get_hermite_target(H, squared_coeffs, noise_var=0):
+def get_powerlaw_target(H, source_exp, offset=6, include_noise=True):
+    if source_exp <= 1:
+        raise ValueError("source_exp must be > 1 for powerlaw target")
+    if offset < 1:
+        raise ValueError("offset ≥ 1required")
     N, P = H.shape
-    assert P == len(squared_coeffs), "num monomials must match num coeffs"
+    squared_coeffs = get_powerlaw(P, source_exp, offset=offset)
     y = H @ torch.sqrt(squared_coeffs)
-
-    snr = np.inf
-    if noise_var:
-        noise = ensure_torch(torch.normal(0, np.sqrt(noise_var / N), y.shape))
-        snr = y @ y / (noise @ noise)
-        y += noise
+    if include_noise:
+        totalsum = zeta(source_exp, offset)  # sum_{k=offset  }^infty k^{-exp}
+        tailsum = zeta(source_exp, offset+P) # sum_{k=offset+P}^infty k^{-exp}
+        noise_var = tailsum/(totalsum - tailsum)
+        noise = torch.normal(0, np.sqrt(noise_var / N), y.shape)
+        # snr = y @ y / (noise @ noise)
+        y /= torch.linalg.norm(y)
+        y += ensure_torch(noise)
     # we expect size(y_i) ~ 1
-    y = np.sqrt(N) * y / torch.linalg.norm(y)
-    return y, snr
+    y = np.sqrt(N) * y / torch.linalg.norm(y)    
+    return y

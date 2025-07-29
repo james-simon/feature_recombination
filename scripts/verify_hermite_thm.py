@@ -13,7 +13,7 @@ from FileManager import FileManager
 from kernels import GaussianKernel, LaplaceKernel
 from feature_decomp import generate_fra_monomials
 from utils import ensure_torch, ensure_numpy, Hyperparams
-from data import get_powerlaw, get_gaussian_data, get_matrix_hermites
+from data import get_powerlaw, get_matrix_hermites
 
 
 ## sample values
@@ -59,7 +59,9 @@ hypers.save(expt_fm.get_filename("hypers.json"))
 
 if hypers.dataset == "gaussian":
     data_eigvals = get_powerlaw(hypers.data_dim, hypers.data_eigval_exp, offset=6)
-    X = get_gaussian_data(hypers.n_samples, data_eigvals)
+    N, d = hypers.n_samples, hypers.data_dim
+    # on average, we expect norm(x_i) ~ Tr(data_eigvals)
+    X = ensure_torch(torch.normal(0, 1, (N, d))) * torch.sqrt(data_eigvals)
 if hypers.dataset in ["cifar10", "imagenet32"]:
     if hypers.dataset == "cifar10":
         data_dir = os.path.join(datapath, "cifar10")

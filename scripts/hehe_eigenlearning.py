@@ -14,17 +14,17 @@ from FileManager import FileManager
 from kernels import GaussianKernel, LaplaceKernel, krr
 from feature_decomp import generate_fra_monomials
 from utils import ensure_torch, ensure_numpy, Hyperparams
-from data import get_powerlaw, get_gaussian_data, get_matrix_hermites, get_hermite_target
+from data import get_powerlaw, get_matrix_hermites, get_powerlaw_target
 
 hypers = Hyperparams(
     expt_name = "hehe-eigenlearning",
-    dataset = "cifar10",
+    dataset = "gaussian",
     kernel_name = "GaussianKernel",
     kernel_width = 4,
     n_samples = 20_000,
     p_modes = 20_000,
     # If using synth data, set these
-    data_dim = 200,
+    data_dim = 100,
     data_eigval_exp = 1.4,
     # If using natural image data, set these
     zca_strength = 5e-3,
@@ -58,7 +58,9 @@ kerneltype = {
 
 if hypers.dataset == "gaussian":
     data_eigvals = get_powerlaw(hypers.data_dim, hypers.data_eigval_exp, offset=6)
-    X = get_gaussian_data(hypers.n_samples, data_eigvals)
+    N, d = hypers.n_samples, hypers.data_dim
+    # on average, we expect norm(x_i) ~ Tr(data_eigvals)
+    X = ensure_torch(torch.normal(0, 1, (N, d))) * torch.sqrt(ensure_torch(data_eigvals))
 
 if hypers.dataset in ["cifar10", "imagenet32"]:
     if hypers.dataset == "cifar10":
@@ -88,8 +90,7 @@ if True or hypers.dataset == "gaussian":
     targets = {}
     source_exps = [1.01, 1.25, 1.5, 2.0]
     for source_exp in source_exps:
-        squared_coeffs = get_powerlaw(hypers.p_modes, source_exp, offset=6)
-        ystar, _ = get_hermite_target(H, squared_coeffs)
+        ystar = get_powerlaw_target(H, source_exp)
         targets[source_exp] = ensure_numpy(ystar)
 if hypers.dataset == "cifar10":
     pass
