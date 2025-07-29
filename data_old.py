@@ -53,6 +53,12 @@ def get_synthetic_X(d=500, N=15000, offset=3, alpha=1.5, **kwargs):
     X = ensure_torch(torch.normal(0, 1, (N, d))) * torch.sqrt(data_eigvals)
     return X, data_eigvals
 
+def get_online_data(lambdas, Vt, monomials, dim, bsz, data_eigvals, N):
+    X_new, _ = get_synthetic_X(d=dim, N=N, offset=None, alpha=None, data_eigvals=data_eigvals)
+    pca_x = X_new @ Vt.T @ torch.diag(lambdas**(-1.)) * N**(0.5)
+    y_new = get_matrix_hermites(pca_x, monomials, previously_normalized=True)*bsz**(0.5)
+    return X_new, y_new
+
 def get_v_true(fra_eigvals, ytype='Gaussian', **kwargs):
     assert ytype in ["Gaussian", "Uniform", "Isotropic", "Binarized", "PowerLaw", "OneHot", "NHot"], "Type not found"
     match ytype:

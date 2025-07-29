@@ -13,10 +13,13 @@ def get_powerlaw(P, exp, offset=3, normalize=True):
     return pl
 
 
-def get_matrix_hermites(X, monomials):
+def get_matrix_hermites(X, monomials, previously_normalized=False):
     N, _ = X.shape
-    U, _, _ = torch.linalg.svd(X, full_matrices=False)
-    X_norm = np.sqrt(N) * U
+    if not previously_normalized:
+        U, _, _ = torch.linalg.svd(X, full_matrices=False)
+        X_norm = np.sqrt(N) * U
+    else:
+        X_norm = X
 
     hermites = {
         1: lambda x: x,
@@ -39,7 +42,6 @@ def get_matrix_hermites(X, monomials):
             h *= hermites[exp](X_norm[:, d_i]) / Z
         H[:, i] = h
     return H
-
 
 def get_powerlaw_target(H, source_exp, offset=6, include_noise=True):
     if source_exp <= 1:
