@@ -46,8 +46,10 @@ def get_synthetic_X(d=500, N=15000, offset=3, alpha=1.5, **kwargs):
     """
     Powerlaw synthetic data
     """
-    data_eigvals = ensure_torch((offset+np.arange(d)) ** -alpha)
-    data_eigvals /= data_eigvals.sum()
+    data_eigvals = kwargs.get("data_eigvals", None)
+    if kwargs.get("data_eigvals") is None:
+        data_eigvals = ensure_torch((offset+np.arange(d)) ** -alpha)
+        data_eigvals /= data_eigvals.sum()
     X = ensure_torch(torch.normal(0, 1, (N, d))) * torch.sqrt(data_eigvals)
     return X, data_eigvals
 
@@ -119,8 +121,8 @@ def get_synthetic_dataset(X=None, data_eigvals=None, ytype="Gaussian", d=500, N=
     H = ensure_torch(get_matrix_hermites(X, monomials))
     fra_eigvals = ensure_torch(fra_eigvals)
     v_true = get_v_true(fra_eigvals, ytype, noise_size=noise_size, H=H, **vargs)
-    v_true = v_true if not normalized else v_true/torch.linalg.norm(v_true)
-    y = ensure_torch(H) @ v_true + ensure_torch(torch.normal(0., noise_size/H.shape[0]**(0.5), (H.shape[0],)))
+    v_true = v_true if not normalized else v_true/torch.linalg.norm(v_true)* N**(0.5)
+    y = ensure_torch(H) @ v_true + ensure_torch(torch.normal(0., noise_size, (H.shape[0],)))#/H.shape[0]**(0.5)
     return X, y, H, monomials, fra_eigvals, v_true
 
 class SyntheticDataset(Dataset):
