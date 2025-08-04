@@ -4,7 +4,7 @@ import torch
 from feature_decomp import generate_fra_monomials
 from data import get_matrix_hermites
 from kernels import krr
-from utils import ensure_torch, get_data_eigvals
+from utils import ensure_torch
 
 def get_standard_tools(X, kerneltype, kernel_width, top_mode_idx=3000, data_eigvals=None, kmax=20):
     
