@@ -2,10 +2,17 @@ import numpy as np
 import torch
 from itertools import product
 
-from utils import ensure_torch, find_iterables, find_statics
+from utils import ensure_torch
 from tools import get_standard_tools
 from data_old import get_synthetic_dataset, ImageData
 from tools import find_beta
+
+#helper fns v_tilde_experiment
+def find_iterables(d, no_list=["H", "y"]):
+    return {k: v for k, v in d.items() if (isinstance(v, (list, np.ndarray)) and k not in no_list)}
+
+def find_statics(d):
+    return {k: v for k, v in d.items() if not isinstance(v, (list, np.ndarray))}
 
 def get_vtilde(H, y, method = "LSTSQ", **kwargs):
     """
@@ -106,6 +113,7 @@ def dirac_eigencoeffs(H=None, y=None, n=10, n_trials=20, method="LSTSQ", verbose
             v_tilde = get_vtilde(H[random_sampling, eigvec].unsqueeze(1), y[random_sampling], method=method, **kwargs)
             v_tilde = v_tilde/torch.linalg.norm(v_tilde) if eigcoeff_normalized else v_tilde
             v_tildes[:, trial_idx] = v_tilde
+            y = y- H[:, eigvec].unsqueeze(1) * v_tilde  # remove the contribution of the current eigenvector
     return v_tildes
 
 def v_tilde_experiment(input_dict):
