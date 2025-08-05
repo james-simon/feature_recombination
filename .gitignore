@@ -11,3 +11,4 @@ dist/
 .ipynb_checkpoints/
 .testing/
 scratch.ipynb
+.vscode

@@ -43,6 +43,7 @@ def get_matrix_hermites(X, monomials, previously_normalized=False):
         H[:, i] = h
     return H
 
+
 def get_powerlaw_target(H, source_exp, offset=6, include_noise=True):
     if source_exp <= 1:
         raise ValueError("source_exp must be > 1 for powerlaw target")
