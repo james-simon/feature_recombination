@@ -27,7 +27,7 @@ hypers = Hyperparams(
     data_dim = 100,
     data_eigval_exp = 1.4,
     # If using natural image data, set these
-    zca_strength = 5e-3,
+    zca_strength = 0,
 )
 
 # SETUP FILE MANAGEMENT
@@ -90,7 +90,7 @@ if True or hypers.dataset == "gaussian":
     targets = {}
     source_exps = [1.01, 1.25, 1.5, 2.0]
     for source_exp in source_exps:
-        ystar = get_powerlaw_target(H, source_exp)
+        ystar = get_powerlaw_target(H, source_exp, include_noise=False)
         targets[source_exp] = ensure_numpy(ystar)
 if hypers.dataset == "cifar10":
     pass
