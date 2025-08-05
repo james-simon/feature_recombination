@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from utils import grab_eigval_distributions, ensure_torch
+from utils import ensure_torch
 
 def eigvecs_to_independent(eigenvectors, bsz=None, rng = None, to_torch=True):
     rng = np.random.default_rng() if rng is None else rng
@@ -16,6 +16,8 @@ def eigvecs_to_independent(eigenvectors, bsz=None, rng = None, to_torch=True):
     return ensure_torch(independent_components) if to_torch else independent_components
 
 def independentize_data(X, bsz=1, rng=None):
-    eigenvectors, Vt = grab_eigval_distributions(X)
+    U, S, Vt = torch.linalg.svd(X, full_matrices=False)
+    eigenvectors = U @ torch.diag(S)
+
     independent_data = eigvecs_to_independent(eigenvectors, bsz, rng)
     return independent_data @ Vt

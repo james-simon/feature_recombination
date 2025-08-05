@@ -50,9 +50,12 @@ def generate_fra_monomials(data_covar_eigvals, num_monomials, eval_level_coeff, 
         - fra_eigvals (np.ndarray): Array of fra eigenvalues.
         - monomials (list): List of generated monomials.
     """
+    #implemented as num_monomials is occasionally gotten from a numpy array, so they're np.int's
     if not(isinstance(num_monomials, int) and num_monomials > 0):    
         print(f"num_monomials being forced to a positive integer, currently {type(num_monomials)}, {num_monomials}")
         num_monomials = abs(int(num_monomials))
+        if type(num_monomials) is not int:
+            raise ValueError(f"num_monomials must be a positive integer, got {num_monomials} of type {type(num_monomials)}")
     d = len(data_covar_eigvals)
 
     monomials = [Monomial({})]
@@ -88,7 +91,6 @@ def generate_fra_monomials(data_covar_eigvals, num_monomials, eval_level_coeff, 
 
     return np.array(fra_eigvals), monomials
 
-
 def fra_terms_from_monomials(monomials, data_eigvals, eval_level_coeff):
     """
     Computes the eigenvalues for a list of monomials.
@@ -108,7 +110,4 @@ def fra_terms_from_monomials(monomials, data_eigvals, eval_level_coeff):
 
 
 def lookup_monomial_idx(monomials, monomial):
-    for i, mon in enumerate(monomials):
-        if mon == monomial:
-            return i
-    return None
+    return next((i for i, m in enumerate(monomials) if m == monomial), None)
