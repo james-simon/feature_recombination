@@ -1,6 +1,7 @@
 import heapq
 import numpy as np
 
+
 class Monomial(dict):
 
     def __init__(self, *args, **kwargs):
@@ -90,6 +91,7 @@ def generate_fra_monomials(data_covar_eigvals, num_monomials, eval_level_coeff, 
             heapq.heappush(pq, (-fra_eigval, right_monomial))
 
     return np.array(fra_eigvals), monomials
+
 
 def fra_terms_from_monomials(monomials, data_eigvals, eval_level_coeff):
     """

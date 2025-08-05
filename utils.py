@@ -3,6 +3,7 @@ import torch
 from dataclasses import dataclass, asdict
 import json
 
+
 @dataclass
 class Hyperparams:
     expt_name: str
@@ -30,11 +31,13 @@ class Hyperparams:
             fp += f"-zca:{self.zca_strength}"
         return fp
 
+
 def ensure_numpy(x):
     """Convert torch.Tensor to numpy array if necessary."""
     if isinstance(x, torch.Tensor):
         return x.detach().cpu().numpy()
     return np.asarray(x)
+
 
 def ensure_torch(x, dtype=torch.float32):
     """Convert numpy array to torch.Tensor if needed, and ensure correct dtype."""

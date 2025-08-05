@@ -6,6 +6,7 @@ from data import get_matrix_hermites
 from kernels import krr
 from utils import ensure_torch
 
+
 def get_standard_tools(X, kerneltype, kernel_width, top_mode_idx=3000, data_eigvals=None, kmax=20):
     
     if data_eigvals is None:
@@ -20,6 +21,7 @@ def get_standard_tools(X, kerneltype, kernel_width, top_mode_idx=3000, data_eigv
     H = ensure_torch(get_matrix_hermites(X, monomials))
 
     return monomials, kernel, H, fra_eigvals, data_eigvals
+
 
 def find_beta(K, y, num_estimators=20, n_test=100, n_trials=20, rng=np.random.default_rng(42)):
     sizes = np.logspace(0, np.log10(K.shape[0]-n_test)-0.2, num=num_estimators)
