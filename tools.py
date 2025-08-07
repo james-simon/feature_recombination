@@ -33,7 +33,11 @@ def find_beta(K, y, num_estimators=20, n_test=100, n_trials=20, rng=np.random.de
         for trial in range(n_trials):
             idxs = rng.choice(K.shape[0], size=n+n_test, replace=False)
             K_sub, y_sub = K[idxs[:, None], idxs[None, :]], y[idxs]
-            _, test_mse, _ = krr(K_sub, y_sub, n_train=n, n_test=n_test, ridge=1e-20)
+            (y_hat_test, y_test), _ = krr(K_sub, y_sub, n_train=n, n_test=n_test, ridge=1e-20)
+            
+            test_mse = ((y_test - y_hat_test) ** 2).mean(axis=0)
+            test_mse = test_mse.sum().item()
+
             test_mses[trial, i] = test_mse
             torch.cuda.empty_cache()
         
