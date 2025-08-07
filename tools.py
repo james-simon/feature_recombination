@@ -23,7 +23,7 @@ def get_standard_tools(X, kerneltype, kernel_width, top_mode_idx=3000, data_eigv
     return monomials, kernel, H, fra_eigvals, data_eigvals
 
 
-def find_beta(K, y, num_estimators=20, n_test=100, n_trials=20, rng=np.random.default_rng(42)):
+def find_beta(K, y, num_estimators=20, n_test=100, n_trials=20, rng=np.random.default_rng(42), **kwargs):
     sizes = np.logspace(0, np.log10(K.shape[0]-n_test)-0.2, num=num_estimators)
     K = ensure_torch(K)
     y = ensure_torch(y)
@@ -33,7 +33,7 @@ def find_beta(K, y, num_estimators=20, n_test=100, n_trials=20, rng=np.random.de
         for trial in range(n_trials):
             idxs = rng.choice(K.shape[0], size=n+n_test, replace=False)
             K_sub, y_sub = K[idxs[:, None], idxs[None, :]], y[idxs]
-            (y_hat_test, y_test), _ = krr(K_sub, y_sub, n_train=n, n_test=n_test, ridge=1e-20)
+            (y_hat_test, y_test), _ = krr(K_sub, y_sub, n_train=n, n_test=n_test, ridge=kwargs.get("ridge", 1e-20))
             
             test_mse = ((y_test - y_hat_test) ** 2).mean(axis=0)
             test_mse = test_mse.sum().item()
