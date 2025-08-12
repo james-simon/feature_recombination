@@ -9,7 +9,7 @@ def krr(K, y, n_train, n_test, ridge=0):
     assert n_train + n_test <= n_tot
     train_slc = torch.randperm(n_tot - n_test)[:n_train]
     test_slc = torch.arange(n_tot - n_test, n_tot)
-    slc = torch.cat([train_slc, test_slc])
+    slc = torch.cat([train_slc, test_slc]).to(K.device)
     K = K[slc[:, None], slc[None, :]]
     y = y[slc]
 
