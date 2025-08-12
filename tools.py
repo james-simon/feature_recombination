@@ -22,9 +22,8 @@ def get_standard_tools(X, kerneltype, kernel_width, top_mode_idx=3000, data_eigv
 
     return monomials, kernel, H, fra_eigvals, data_eigvals
 
-
-def find_beta(K, y, num_estimators=20, n_test=100, n_trials=20, rng=np.random.default_rng(42), **kwargs):
-    sizes = np.logspace(np.log10(kwargs.get("size_start", 1)), np.log10(K.shape[0]-n_test)-kwargs.get('size_offset', 0.2), num=num_estimators)
+def get_test_mses(K, y, num_estimators=20, n_test=100, n_trials=20, **kwargs):
+    sizes = np.logspace(np.log10(kwargs.get("size_start", 100)), np.log10(K.shape[0]-n_test)-kwargs.get('size_offset', 0.01), num=num_estimators)
     K = ensure_torch(K)
     y = ensure_torch(y)
     test_mses = np.zeros((n_trials, num_estimators))
@@ -42,6 +41,10 @@ def find_beta(K, y, num_estimators=20, n_test=100, n_trials=20, rng=np.random.de
 
             test_mses[trial, i] = test_mse
             torch.cuda.empty_cache()
+    return sizes, test_mses
+
+def find_beta(K, y, num_estimators=20, n_test=100, n_trials=20, **kwargs):
+    sizes, test_mses = get_test_mses(K=K, y=y, num_estimators=num_estimators, n_test=n_test, n_trials=n_trials, **kwargs)
 
     log_sizes = torch.log10(ensure_torch(sizes))
     log_sizes_centered_w_intercept = torch.column_stack((log_sizes, torch.ones_like(log_sizes)))
