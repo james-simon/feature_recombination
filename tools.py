@@ -31,7 +31,10 @@ def find_beta(K, y, num_estimators=20, n_test=100, n_trials=20, rng=np.random.de
     for i, n in enumerate(sizes):
         n = int(n)
         for trial in range(n_trials):
-            idxs = rng.choice(K.shape[0], size=n+n_test, replace=False)
+            train_pool = np.arange(0, n)
+            train_idx  = rng.permutation(train_pool)[:n]
+            test_idx   = np.arange(K.shape[0] - n_test, n)
+            idxs       = np.concatenate([train_idx, test_idx])
             K_sub, y_sub = K[idxs[:, None], idxs[None, :]], y[idxs]
             (y_hat_test, y_test), _ = krr(K_sub, y_sub, n_train=n, n_test=n_test, ridge=kwargs.get("ridge", 1e-20))
             
