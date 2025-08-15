@@ -40,7 +40,7 @@ def sample_v_tilde(H=None, v_true=None, y=None, top_fra_eigmode=None, n=10, n_tr
     """
     Nmax = H.shape[0]
     v_tildes = torch.zeros(top_fra_eigmode, n_trials)
-    residuals = torch.zeros(n_trials)
+    residuals_squared = torch.zeros(n_trials)
     for trial_idx in range(n_trials):
         if verbose_every is not None and not trial_idx%verbose_every:
             print(f"Starting run {trial_idx}")
@@ -50,10 +50,10 @@ def sample_v_tilde(H=None, v_true=None, y=None, top_fra_eigmode=None, n=10, n_tr
             err = H[:, :top_fra_eigmode] @ (v_tilde - v_true[:top_fra_eigmode]) + H[:, top_fra_eigmode:] @ v_true[top_fra_eigmode:]
         else:
             err = H[:, :top_fra_eigmode] @ v_tilde - y
-        residuals[trial_idx] = (err**2).mean()
+        residuals_squared[trial_idx] = (err**2).mean()
         v_tilde = v_tilde/torch.linalg.norm(v_tilde) if eigcoeff_normalized else v_tilde
         v_tildes[:, trial_idx] = v_tilde
-    return v_tildes, residuals
+    return v_tildes, residuals_squared
 
 def get_eigencoeffs(X=None, y=None, dataset_name="cifar10", n_train=None, n_test=None, kerneltype=None, kernel_width=2, beta=None,
                     num_estimators=20, n_trials=20, n_trials_beta=10, rng=np.random.default_rng(42), kappa=None, ridge=None, P_optimal=None,
@@ -68,7 +68,7 @@ def get_eigencoeffs(X=None, y=None, dataset_name="cifar10", n_train=None, n_test
         
         X_train, y_train = imdata.get_dataset(n_train, get='train', rng=rng, **dataargs)
         X_test, y_test = imdata.get_dataset(n_test, get='test', rng=rng, **dataargs)
-        X_train, y_train, X_test, y_test = [ensure_torch(t) for t in (X_train, y_train, X_test, y_test)]
+        X_train, y_train, X_test, y_test = map(ensure_torch, (X_train, y_train, X_test, y_test))
         X = torch.vstack((X_train, X_test))
         y = torch.vstack((y_train, y_test)).squeeze()
     
