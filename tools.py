@@ -32,11 +32,7 @@ def get_test_mses(K, y, num_estimators=20, n_test=100, n_trials=20, **kwargs):
     for i, n in enumerate(sizes):
         n = int(n)
         for trial in range(n_trials):
-            train_idx = torch.arange(0, K.shape[0] - n_test)
-            test_idx   = torch.arange(K.shape[0] - n_test, K.shape[0])
-            idxs       = torch.concatenate([train_idx, test_idx]).to(K.device)
-            K_sub, y_sub = K[idxs[:, None], idxs[None, :]], y[idxs]
-            (y_hat_test, y_test), _ = krr(K_sub, y_sub, n_train=n, n_test=n_test, ridge=kwargs.get("ridge", 1e-20))
+            (y_hat_test, y_test), _ = krr(K, y, n_train=n, n_test=n_test, ridge=kwargs.get("ridge", 1e-20))
             
             test_mse = ((y_test - y_hat_test) ** 2).mean(axis=0)
             test_mse = test_mse.sum().item()
