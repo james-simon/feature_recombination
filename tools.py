@@ -28,7 +28,7 @@ def get_test_mses(K, y, num_estimators=20, n_test=100, n_trials=20, **kwargs):
         sizes = np.logspace(np.log10(kwargs.get("size_start", 100)), np.log10(K.shape[0]-n_test)-kwargs.get('size_offset', 0.01), num=num_estimators)
     K = ensure_torch(K)
     y = ensure_torch(y)
-    test_mses = np.zeros((n_trials, num_estimators))
+    test_mses = np.zeros((n_trials, len(sizes)))
     for i, n in enumerate(sizes):
         n = int(n)
         for trial in range(n_trials):
