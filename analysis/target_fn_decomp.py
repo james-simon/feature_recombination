@@ -23,12 +23,12 @@ def get_eigencoeffs(H, y, method = "GRF", **kwargs):
     #y_non_onehot = torch.argmax(y_train, dim=1)
     if method == "LSTSQ":
         coeffs = torch.linalg.lstsq(ensure_torch(H), ensure_torch(y).unsqueeze(1)).solution.squeeze()
-        reidual = y - H @ coeffs.unsqueeze(1)
-        residual_norm_squared = torch.norm(reidual) ** 2
+        residual = y - H @ coeffs
+        residual_norm_squared = torch.norm(residual) ** 2
     elif method == "dotprod":
         coeffs = (H.T @ y.float())
-        reidual = y - H @ coeffs.unsqueeze(1)
-        residual_norm_squared = torch.norm(reidual) ** 2
+        residual = y - H @ coeffs
+        residual_norm_squared = torch.norm(residual) ** 2
     elif method == "LSTSQR":
         H = ensure_torch(H).float()
         y = ensure_torch(y).float().unsqueeze(1)  # shape: [n, 1]
@@ -36,8 +36,8 @@ def get_eigencoeffs(H, y, method = "GRF", **kwargs):
         I = torch.eye(n_features, device=H.device, dtype=H.dtype)
         ridge = kwargs.get("ridge", 1)
         coeffs = torch.linalg.solve(H.T @ H + ridge * I, H.T @ y).squeeze()
-        reidual = y - H @ coeffs.unsqueeze(1)
-        residual_norm_squared = torch.norm(reidual) ** 2
+        residual = y - H @ coeffs
+        residual_norm_squared = torch.norm(residual) ** 2
     elif method == "GRF":
         n_steps = kwargs.get("n_steps", None)
         n_samples, n_modes = H.shape

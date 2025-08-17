@@ -1,9 +1,10 @@
 import scipy
-
+from utils import ensure_numpy
 
 def eigenlearning(n, eigvals, eigcoeffs, ridge=0, noise_var=0):
 
     def solve_kappa(n, eigvals, ridge):
+        eigvals = ensure_numpy(eigvals)
         conservation_law = lambda kap: (eigvals/(eigvals+kap)).sum() + ridge/kap - n
         kappa = scipy.optimize.bisect(conservation_law, 1e-25, 1e10, maxiter=128)
         return kappa
