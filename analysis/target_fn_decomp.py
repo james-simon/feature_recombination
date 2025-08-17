@@ -6,6 +6,7 @@ from utils import ensure_torch
 from tools import get_standard_tools
 from data_old import get_synthetic_dataset, ImageData
 from tools import find_beta
+from tqdm import trange
 
 #helper fns v_tilde_experiment
 def find_iterables(d, no_list=["H", "y"]):
@@ -14,27 +15,49 @@ def find_iterables(d, no_list=["H", "y"]):
 def find_statics(d):
     return {k: v for k, v in d.items() if not isinstance(v, (list, np.ndarray))}
 
-def get_vtilde(H, y, method = "LSTSQ", **kwargs):
+def get_eigencoeffs(H, y, method = "GRF", **kwargs):
     """
     Assumes H is already made of floats
     """
-    assert method in ["LSTSQ", "dotprod", "LSTSQR"], "method for finding eigencoeffs not found"
+    assert method in ["LSTSQ", "dotprod", "LSTSQR", "GRF"], "method for finding eigencoeffs not found"
     #y_non_onehot = torch.argmax(y_train, dim=1)
     if method == "LSTSQ":
-        v_tilde = torch.linalg.lstsq(ensure_torch(H), ensure_torch(y).unsqueeze(1)).solution.squeeze()
+        coeffs = torch.linalg.lstsq(ensure_torch(H), ensure_torch(y).unsqueeze(1)).solution.squeeze()
+        reidual = y - H @ coeffs.unsqueeze(1)
+        residual_norm_squared = torch.norm(reidual) ** 2
     elif method == "dotprod":
-        v_tilde = (H.T @ y.float())
+        coeffs = (H.T @ y.float())
+        reidual = y - H @ coeffs.unsqueeze(1)
+        residual_norm_squared = torch.norm(reidual) ** 2
     elif method == "LSTSQR":
         H = ensure_torch(H).float()
         y = ensure_torch(y).float().unsqueeze(1)  # shape: [n, 1]
         n_features = H.shape[1]
         I = torch.eye(n_features, device=H.device, dtype=H.dtype)
         ridge = kwargs.get("ridge", 1)
-        v_tilde = torch.linalg.solve(H.T @ H + ridge * I, H.T @ y).squeeze()
+        coeffs = torch.linalg.solve(H.T @ H + ridge * I, H.T @ y).squeeze()
+        reidual = y - H @ coeffs.unsqueeze(1)
+        residual_norm_squared = torch.norm(reidual) ** 2
+    elif method == "GRF":
+        n_samples, n_modes = H.shape
+        if n_steps is None:
+            n_steps = n_modes
 
-    return v_tilde
+        assert n_steps <= n_modes, "n_steps must be less than or equal to n_modes"
 
-def sample_v_tilde(H=None, v_true=None, y=None, top_fra_eigmode=None, n=10, n_trials=20, method="LSTSQ", verbose_every=5, eigcoeff_normalized=True, **kwargs):
+        coeffs = torch.zeros(n_steps, dtype=H.dtype, device=H.device)
+        residual = y.clone()
+
+        with trange(n_steps, desc="Sequential fit", unit="step", total=n_steps) as pbar:
+            for j in pbar:
+                phi_j = H[:, j]
+                coeffs[j] = torch.dot(phi_j, residual) / torch.linalg.norm(phi_j) ** 2
+                residual -= coeffs[j] * phi_j
+                pbar.set_postfix(residual_norm=residual.norm().item())
+        residual_norm_squared = residual.norm().item() ** 2
+    return coeffs, residual_norm_squared
+
+def sample_eigencoeffs(H=None, v_true=None, y=None, top_fra_eigmode=None, n=10, n_trials=20, method="LSTSQ", verbose_every=5, eigcoeff_normalized=True, **kwargs):
     """
     Samples v_tilde by randomly selecting n samples from H and y.
     """
@@ -45,78 +68,13 @@ def sample_v_tilde(H=None, v_true=None, y=None, top_fra_eigmode=None, n=10, n_tr
         if verbose_every is not None and not trial_idx%verbose_every:
             print(f"Starting run {trial_idx}")
         random_sampling = np.random.choice(Nmax, size=n, replace=False)
-        v_tilde = get_vtilde(H[random_sampling, :top_fra_eigmode], y[random_sampling], method=method, **kwargs)
-        if v_true is not None:
-            err = H[:, :top_fra_eigmode] @ (v_tilde - v_true[:top_fra_eigmode]) + H[:, top_fra_eigmode:] @ v_true[top_fra_eigmode:]
-        else:
-            err = H[:, :top_fra_eigmode] @ v_tilde - y
-        residuals_squared[trial_idx] = (err**2).mean()
+        v_tilde, residual_squared = get_eigencoeffs(H[random_sampling, :top_fra_eigmode], y[random_sampling], method=method, **kwargs)
         v_tilde = v_tilde/torch.linalg.norm(v_tilde) if eigcoeff_normalized else v_tilde
         v_tildes[:, trial_idx] = v_tilde
+        residuals_squared[trial_idx] = residual_squared
     return v_tildes, residuals_squared
 
-def get_eigencoeffs(X=None, y=None, dataset_name="cifar10", n_train=None, n_test=None, kerneltype=None, kernel_width=2, beta=None,
-                    num_estimators=20, n_trials=20, n_trials_beta=10, rng=np.random.default_rng(42), kappa=None, ridge=None, P_optimal=None,
-                    **dataargs):
-    """
-    From a dataset, estimates eigencoefficients
-    
-    Returns dict of eigencoefficients, optimal num eigenmodes considered, """
-
-    if X is None:
-        imdata = ImageData(dataset_name, **dataargs)
-        
-        X_train, y_train = imdata.get_dataset(n_train, get='train', rng=rng, **dataargs)
-        X_test, y_test = imdata.get_dataset(n_test, get='test', rng=rng, **dataargs)
-        X_train, y_train, X_test, y_test = map(ensure_torch, (X_train, y_train, X_test, y_test))
-        X = torch.vstack((X_train, X_test))
-        y = torch.vstack((y_train, y_test)).squeeze()
-    
-    n_tot = n_train+n_test
-    assert n_tot == len(y), "Error found while evaluating the number of samples in the dataset"
-    
-    monomials, kernel, H, fra_eigvals, data_eigvals = get_standard_tools(X, kerneltype, kernel_width, top_mode_idx = X.shape[0], data_eigvals = None, kmax=10)
-
-    K = kernel.K
-    intercept = None #force in case beta is given
-    if P_optimal is None:
-        if beta is None:
-            beta, intercept, _, _ = find_beta(K, y, num_estimators=num_estimators, n_test=n_test, n_trials=n_trials_beta)
-            # print(f"Found beta = {beta}")
-        P_optimal = int((beta-1)/beta*n_tot)
-    eigencoeffs, train_mse = sample_v_tilde(H, y=y, top_fra_eigmode=P_optimal, n=n_tot, n_trials=n_trials, method="LSTSQ", verbose_every=None, eigcoeff_normalized=True)
-    train_mse = train_mse[0]
-    if kappa is None:
-        test_mse = train_mse * (n_tot/(n_tot-P_optimal))**(2.)
-    else:
-        test_mse = train_mse * (n_tot*kappa/ridge)**(2.)
-    
-    noise_var = test_mse/n_tot
-    good_indices = ((eigencoeffs.mean(axis=-1))**(2)/noise_var > 1)
-
-    retdict = {"eigencoeffs": eigencoeffs, "P_optimal": P_optimal, "N":n_tot, "kernel": K, "test_mse": test_mse,
-               "monomials": monomials, "H": H, "fra_eigvals": fra_eigvals, "data_eigvals": data_eigvals,
-               "eigcoeff_var": noise_var, "beta": beta, "intercept": intercept, "resolveable_indices": good_indices}
-    return retdict
-
-def dirac_eigencoeffs(H=None, y=None, n=10, n_trials=20, method="LSTSQ", verbose_every=5, eigcoeff_normalized=True, **kwargs):
-    """
-    Try to estimate v_tilde by getting coefficients one at a time.
-    """
-    Nmax, num_eigvecs = H.shape
-    v_tildes = torch.zeros(num_eigvecs, n_trials)
-    for eigvec in range(num_eigvecs):
-        for trial_idx in range(n_trials):
-            if verbose_every is not None and not trial_idx%verbose_every:
-                print(f"Starting run {trial_idx}")
-            random_sampling = np.random.choice(Nmax, size=n, replace=False)
-            v_tilde = get_vtilde(H[random_sampling, eigvec].unsqueeze(1), y[random_sampling], method=method, **kwargs)
-            v_tilde = v_tilde/torch.linalg.norm(v_tilde) if eigcoeff_normalized else v_tilde
-            v_tildes[:, trial_idx] = v_tilde
-            y = y- H[:, eigvec].unsqueeze(1) * v_tilde  # remove the contribution of the current eigenvector
-    return v_tildes
-
-def v_tilde_experiment(input_dict):
+def eigencoeff_experiment(input_dict):
     #assumes all v_tildes will be similarly shaped
     iterable_dict = find_iterables(input_dict)
     static_dict = find_statics(input_dict)
@@ -148,26 +106,8 @@ def v_tilde_experiment(input_dict):
             X, y, H, monomials, fra_eigvals, v_true = get_synthetic_dataset(**all_args)
             all_args.update(dict(X=X, y=y, H=H, monomials=monomials, fra_eigvals=fra_eigvals, v_true=v_true))
 
-        out = sample_v_tilde(**all_args)
+        out = sample_eigencoeffs(**all_args)
 
         multi_idx = np.unravel_index(idx, shapes)
         all_v_tildes[multi_idx] = out[:P, :]
     return all_v_tildes, H, v_true, monomials
-
-#explicit experiments
-
-def v_tilde_p_experiment(top_fra_eigmodes, H, y, n, n_trials=20, minmode=True, method="LSTSQ", verbose_every=5, ridge=None, **kwargs):
-    minval = np.min(top_fra_eigmodes)
-
-    all_v_tildes = [] if not minmode else torch.zeros(len(top_fra_eigmodes), minval, n_trials)
-    for i, top_fra_eigmode in enumerate(top_fra_eigmodes):
-        top_fra_eigmode = int(top_fra_eigmode) #usually a np.int which prints exception
-        print(f"Starting P={top_fra_eigmode}")
-        v_tildes = sample_v_tilde(H, y, top_fra_eigmode, n, n_trials, verbose_every=5, method=method, ridge=None, **kwargs)
-        if not minmode:
-            all_v_tildes.append(v_tildes)
-        else:
-            all_v_tildes[i] = v_tildes[:minval]
-    if minmode:
-        return all_v_tildes.squeeze()
-    return all_v_tildes

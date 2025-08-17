@@ -3,6 +3,7 @@ from scipy.stats import norm
 import torch
 from utils import ensure_numpy, ensure_torch 
 from .independence_tests import independentize_data
+from tools import get_standard_tools
 
 def get_emperical_pdf(X, num_bins=100, tol=1e-3):
     counts, bin_edges = np.histogram(X, bins=num_bins, density=True)
@@ -16,22 +17,6 @@ def get_emperical_cdf(X):
     ranks = np.argsort(np.argsort(X, axis=0), axis=0)
     uniform = (ranks + 1) / (X.shape[0] + 1)
     return uniform #uniform distribution while preserving the relative rank
-
-# def cdf_to_gaussian(uniform_cdf, S):
-#     gaussian_samples = norm.ppf(uniform_cdf) * S
-#     return gaussian_samples
-
-# def sample_from_cdf(cdf, num_samples=10000):
-#     uniform_samples = np.random.rand(num_samples)
-
-#     bin_indices = np.searchsorted(cdf, uniform_samples)
-
-#     bin_left_edges = bin_edges[bin_indices]
-#     bin_right_edges = bin_edges[bin_indices + 1]
-#     random_within_bin = np.random.rand(num_samples)
-
-#     samples = bin_left_edges + random_within_bin * (bin_right_edges - bin_left_edges)
-#     return samples
 
 def eigvecs_to_gaussian(X, S=None, to_torch=True):
     if S is None:
@@ -64,3 +49,25 @@ def gaussianize_data(X):
 def percent_gaussian(X, alpha=0.5, S=None):
     modified_dist = (1-alpha) * X + alpha * gaussianize_data(X)
     return modified_dist
+
+def full_analysis(X, kerneltype, kernel_width, top_fra_eigmode=3000):
+    X_gaussian = gaussianize_marginals(X)
+    X_independent = independentize_data(X, bsz=X.shape[0])
+    X_gaussian_independent = gaussianize_data(X)
+    
+    outdict = {}
+
+    def get_everything(X_in, kerneltype, kernel_width, top_fra_eigmode):
+        torch.cuda.empty_cache()
+        monomials, kernel, H, fra_eigvals, data_eigvals = get_standard_tools(X_in, kerneltype, kernel_width, top_mode_idx=top_fra_eigmode)
+
+        eigvals, eigvecs = kernel.eigendecomp()
+        pdf, cdf, quartiles = kernel.kernel_function_projection(H)
+        return {"monomials": monomials, "kernel": kernel, "kernel": H, "eigvals": eigvals, "pdf": pdf, "cdf": cdf,
+                "quartiles": quartiles, "fra_eigvals": fra_eigvals, "data_eigvals": data_eigvals}
+    
+    outdict["Normal"] = get_everything(X, kerneltype, kernel_width, top_fra_eigmode)
+    outdict["Gaussian"] = get_everything(X_gaussian, kerneltype, kernel_width, top_fra_eigmode)
+    outdict["Independent"] = get_everything(X_independent, kerneltype, kernel_width, top_fra_eigmode)
+    outdict["Gaussian Independent"] = get_everything(X_gaussian_independent, kerneltype, kernel_width, top_fra_eigmode)
+    return outdict

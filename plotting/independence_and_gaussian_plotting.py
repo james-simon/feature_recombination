@@ -14,10 +14,6 @@ def plot_full_analysis(full_analysis_dict, colors=['xkcd:red', 'xkcd:orange', 'x
     if axes is None:
         _, axes = plt.subplots(2, 2, figsize=(12, 8))
 
-    # eigvals_cpu = eigvals.cpu().numpy()
-    # eigvals_g_cpu = eigvals_g.cpu().numpy()
-    # eigvals_i_cpu = eigvals_i.cpu().numpy()
-    # eigvals_gi_cpu = eigvals_gi.cpu().numpy()
     quartiles = full_analysis_dict["Normal"]["quartiles"]
     quartiles_g = full_analysis_dict["Gaussian"]["quartiles"]
     quartiles_i = full_analysis_dict["Independent"]["quartiles"]
@@ -30,7 +26,6 @@ def plot_full_analysis(full_analysis_dict, colors=['xkcd:red', 'xkcd:orange', 'x
     xerr_g = -np.array([quartiles_g[:, 0]-eff_eigvals_g, eff_eigvals_g-quartiles_g[:, 2]])
     xerr_i = -np.array([quartiles_i[:, 0]-eff_eigvals_i, eff_eigvals_i-quartiles_i[:, 2]])
     xerr_gi = -np.array([quartiles_gi[:, 0]-eff_eigvals_gi, eff_eigvals_gi-quartiles_gi[:, 2]])
-
 
     xmin, xmax = 1e-7, 2e0
     xx = np.linspace(xmin, xmax, 10)
