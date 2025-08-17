@@ -39,6 +39,7 @@ def get_eigencoeffs(H, y, method = "GRF", **kwargs):
         reidual = y - H @ coeffs.unsqueeze(1)
         residual_norm_squared = torch.norm(reidual) ** 2
     elif method == "GRF":
+        n_steps = kwargs.get("n_steps", None)
         n_samples, n_modes = H.shape
         if n_steps is None:
             n_steps = n_modes
