@@ -64,31 +64,34 @@ def generate_fra_monomials(data_covar_eigvals, num_monomials, eval_level_coeff, 
     # Each entry in the priority queue is (-fra_eigval, Monomial({idx:exp, ...}))
     pq = [(-get_fra_eigval(data_covar_eigvals, Monomial({0:1}), eval_level_coeff), Monomial({0:1}))]
     heapq.heapify(pq)
-    while pq and len(monomials) < num_monomials:
-        neg_fra_eigval, monomial = heapq.heappop(pq)
-        fra_eigvals.append(-neg_fra_eigval)
-        monomials.append(monomial)
+    with trange(num_monomials, desc="Eigval Finder", unit="step", total=num_monomials) as pbar:
+        for j in pbar:
+            if not pq:
+                return np.array(fra_eigvals), monomials
+            neg_fra_eigval, monomial = heapq.heappop(pq)
+            fra_eigvals.append(-neg_fra_eigval)
+            monomials.append(monomial)
 
-        last_idx = max(monomial.keys())
-        if last_idx + 1 < d:
-            left_monomial = monomial.copy()
-            left_monomial[last_idx] -= 1
-            if left_monomial[last_idx] == 0:
-                del left_monomial[last_idx]
-            left_monomial[last_idx + 1] = left_monomial.get(last_idx + 1, 0) + 1
+            last_idx = max(monomial.keys())
+            if last_idx + 1 < d:
+                left_monomial = monomial.copy()
+                left_monomial[last_idx] -= 1
+                if left_monomial[last_idx] == 0:
+                    del left_monomial[last_idx]
+                left_monomial[last_idx + 1] = left_monomial.get(last_idx + 1, 0) + 1
 
-            fra_eigval = get_fra_eigval(data_covar_eigvals, left_monomial, eval_level_coeff)
-            heapq.heappush(pq, (-fra_eigval, left_monomial))
+                fra_eigval = get_fra_eigval(data_covar_eigvals, left_monomial, eval_level_coeff)
+                heapq.heappush(pq, (-fra_eigval, left_monomial))
 
-        if monomial.degree() < kmax:
-            right_monomial = monomial.copy()
-            right_monomial[last_idx] += 1
-            if eval_level_coeff(right_monomial.degree()) < 1e-12:
+            if monomial.degree() < kmax:
+                right_monomial = monomial.copy()
                 right_monomial[last_idx] += 1
-            if right_monomial.degree() > kmax:
-                continue
-            fra_eigval = get_fra_eigval(data_covar_eigvals, right_monomial, eval_level_coeff)
-            heapq.heappush(pq, (-fra_eigval, right_monomial))
+                if eval_level_coeff(right_monomial.degree()) < 1e-12:
+                    right_monomial[last_idx] += 1
+                if right_monomial.degree() > kmax:
+                    continue
+                fra_eigval = get_fra_eigval(data_covar_eigvals, right_monomial, eval_level_coeff)
+                heapq.heappush(pq, (-fra_eigval, right_monomial))
 
     return np.array(fra_eigvals), monomials
 
