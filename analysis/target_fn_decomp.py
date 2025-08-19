@@ -36,7 +36,7 @@ def get_eigencoeffs(H, y, method = "GRF", **kwargs):
         I = torch.eye(n_features, device=H.device, dtype=H.dtype)
         ridge = kwargs.get("ridge", 1)
         coeffs = torch.linalg.solve(H.T @ H + ridge * I, H.T @ y).squeeze()
-        residual = y - H @ coeffs
+        residual = y.squeeze() - H @ coeffs
         residual_norm_squared = torch.norm(residual) ** 2
     elif method == "GRF":
         n_steps = kwargs.get("n_steps", None)
