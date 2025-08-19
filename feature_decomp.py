@@ -1,5 +1,6 @@
 import heapq
 import numpy as np
+from tqdm import trange
 
 
 class Monomial(dict):
