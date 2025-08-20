@@ -38,7 +38,7 @@ def estimate_kappa(kernel, n, ridge=0):
     if ridge != 0:
         eye = ensure_torch(torch.eye(n))
         K_n = K_n + ridge * eye
-    kappa = 1 / torch.trace(torch.linalg.pinv(K_n)).item()
+    kappa = 1 / torch.trace(torch.linalg.inv(K_n)).item()
     return kappa
 
 
