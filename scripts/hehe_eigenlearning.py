@@ -19,13 +19,13 @@ from data import get_powerlaw, get_matrix_hermites, get_powerlaw_target
 hypers = Hyperparams(
     expt_name = "hehe-eigenlearning",
     dataset = "gaussian",
-    kernel_name = "GaussianKernel",
+    kernel_name = "LaplaceKernel",
     kernel_width = 4,
     n_samples = 20_000,
     p_modes = 20_000,
     # If using synth data, set these
-    data_dim = 100,
-    data_eigval_exp = 1.4,
+    data_dim = 200,
+    data_eigval_exp = 1.2,
     # If using natural image data, set these
     zca_strength = 0,
 )
@@ -86,6 +86,9 @@ eval_level_coeff = kerneltype.get_level_coeff_fn(data_eigvals=data_eigvals,
 hehe_eigvals, monomials = generate_fra_monomials(data_eigvals, hypers.p_modes, eval_level_coeff)
 H = get_matrix_hermites(X, monomials[:hypers.p_modes])
 
+kernel = kerneltype(X, kernel_width=hypers.kernel_width)
+K = ensure_torch(kernel.K)
+
 if True or hypers.dataset == "gaussian":
     targets = {}
     source_exps = [1.01, 1.25, 1.5, 2.0]
@@ -96,9 +99,6 @@ if hypers.dataset == "cifar10":
     pass
 if hypers.dataset == "imagenet32":
     pass
-
-kernel = kerneltype(X, kernel_width=hypers.kernel_width)
-K = ensure_torch(kernel.K)
 
 def get_ntrials(ntrain):
     if ntrain < 100: return 20
