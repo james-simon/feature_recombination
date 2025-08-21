@@ -11,4 +11,5 @@ dist/
 .ipynb_checkpoints/
 .testing/
 scratch.ipynb
+*DEPRECATED*
 .vscode
