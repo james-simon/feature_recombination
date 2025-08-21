@@ -1,14 +1,17 @@
 import numpy as np
 import torch
 
+from einops import rearrange
+
 import sys
 import os
 import json
 
 sys.path.append("../")
 
+from ImageData import ImageData, preprocess
 from FileManager import FileManager
-from kernels import LaplaceKernel
+from kernels import GaussianKernel, LaplaceKernel
 from feature_decomp import generate_fra_monomials
 from utils import ensure_torch, ensure_numpy
 from data import get_powerlaw, get_matrix_hermites
@@ -20,7 +23,7 @@ from data import get_powerlaw, get_matrix_hermites
 # data_eigval_exps = [1.2, 1.5, 2.]
 # zca_strengths = [0, 5e-3, 3e-2]
 
-EXPT_NAME = "laplace-finitesz"
+EXPT_NAME = "verify-hehe"
 DATASET = "gaussian"
 KERNEL_TYPE = LaplaceKernel
 KERNEL_WIDTH = 4
@@ -61,43 +64,45 @@ with open(expt_fm.get_filename("hypers.json"), 'w') as f:
 # START EXPERIMENT
 ##################
 
-assert DATASET == "gaussian"
-assert KERNEL_TYPE.__name__ == "LaplaceKernel"
-
-data_eigvals = get_powerlaw(DATA_DIM, DATA_EIGVAL_EXP, offset=6)
-# on average, we expect norm(x_i) ~ Tr(data_eigvals)
-X = ensure_torch(torch.normal(0, 1, (N_SAMPLES, DATA_DIM)))
-X *= torch.sqrt(data_eigvals)
+if DATASET == "gaussian":
+    data_eigvals = get_powerlaw(DATA_DIM, DATA_EIGVAL_EXP, offset=6)
+    # on average, we expect norm(x_i) ~ Tr(data_eigvals)
+    X = ensure_torch(torch.normal(0, 1, (N_SAMPLES, DATA_DIM)))
+    X *= torch.sqrt(data_eigvals)
+if DATASET in ["cifar10", "imagenet32"]:
+    if DATASET == "cifar10":
+        data_dir = os.path.join(datapath, "cifar10")
+        cifar10 = ImageData('cifar10', data_dir, classes=None)
+        X_raw, _ = cifar10.get_dataset(N_SAMPLES, get="train")
+    if DATASET == "imagenet32":
+        fn = os.path.join(datapath, "imagenet", f"{DATASET}.npz")
+        data = np.load(fn)
+        X_raw = data['data'][:N_SAMPLES].astype(float)
+        X_raw = rearrange(X_raw, 'n (c h w) -> n c h w', c=3, h=32, w=32)
+    X = preprocess(X_raw, center=True, grayscale=True, zca_strength=ZCA_STRENGTH)
+    X = ensure_torch(X)
+    # ensure typical sample has unit norm
+    S = torch.linalg.svdvals(X)
+    X *= torch.sqrt(N_SAMPLES / (S**2).sum())
+    data_eigvals = S**2 / (S**2).sum()
 
 d_eff = 1/(data_eigvals**2).sum().item()
 print(f"d_eff: {d_eff:.2f}", end="\n")
 
-eval_level_coeff = LaplaceKernel.get_level_coeff_fn(data_eigvals=data_eigvals,
-                                                 kernel_width=KERNEL_WIDTH)
-hehe_eigvals, monomials = generate_fra_monomials(data_eigvals, P_MODES, eval_level_coeff)
+kernel = KERNEL_TYPE(X, kernel_width=KERNEL_WIDTH)
+emp_eigvals, _ = kernel.eigendecomp()
+expt_fm.save(kernel.serialize(), "kernel.pickle")
 
-kernel_sizes = np.logspace(1, np.log10(N_SAMPLES), num=10).astype(int)
-emp_eigvals_n = {}
-Ms_n = {}
-print(f"n:", end=" ", flush=True)
-for n in kernel_sizes:
-    print(f"{n}", end=" ", flush=True)
-    X_n = X[:n]
-    kernel = LaplaceKernel(X_n, kernel_width=KERNEL_WIDTH)
-    emp_eigvals, emp_eigvecs = kernel.eigendecomp()
-    emp_eigvals_n[n] = ensure_numpy(emp_eigvals)
-    H_n = get_matrix_hermites(X_n, monomials[:n])
-    M_n = (emp_eigvecs.T @ H_n)**2
-    Ms_n[n] = ensure_numpy(M_n)
-    torch.cuda.empty_cache()
-print()
-    
-expt_fm.save(emp_eigvals_n, "emp_eigvals_n.pickle")
-expt_fm.save(Ms_n, "Ms_n.pickle")
+eval_level_coeff = KERNEL_TYPE.get_level_coeff_fn(data_eigvals=data_eigvals,
+                                                  kernel_width=KERNEL_WIDTH)
+hehe_eigvals, monomials = generate_fra_monomials(data_eigvals, P_MODES, eval_level_coeff)
+H = get_matrix_hermites(X, monomials)
+expt_fm.save(ensure_numpy(H), "H.npy")
 
 result = {
     "monomials": [dict(m) for m in monomials],
     "d_eff": d_eff,
+    "emp_eigvals": ensure_numpy(emp_eigvals),
     "th_eigvals": hehe_eigvals
 }
 expt_fm.save(result, "result.pickle")

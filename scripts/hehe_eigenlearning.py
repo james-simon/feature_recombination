@@ -5,6 +5,7 @@ from einops import rearrange
 
 import sys
 import os
+import json
 
 sys.path.append("../")
 
@@ -13,22 +14,30 @@ from ExptTrace import ExptTrace
 from FileManager import FileManager
 from kernels import GaussianKernel, LaplaceKernel, krr
 from feature_decomp import generate_fra_monomials
-from utils import ensure_torch, ensure_numpy, Hyperparams
+from utils import ensure_torch, ensure_numpy
 from data import get_powerlaw, get_matrix_hermites, get_powerlaw_target
 
-hypers = Hyperparams(
-    expt_name = "hehe-eigenlearning",
-    dataset = "gaussian",
-    kernel_name = "LaplaceKernel",
-    kernel_width = 4,
-    n_samples = 20_000,
-    p_modes = 20_000,
-    # If using synth data, set these
-    data_dim = 200,
-    data_eigval_exp = 1.2,
-    # If using natural image data, set these
-    zca_strength = 0,
-)
+EXPT_NAME = "hehe-eigenlearning"
+DATASET = "gaussian"
+KERNEL_TYPE = LaplaceKernel
+KERNEL_WIDTH = 4
+N_SAMPLES = 20_000
+P_MODES = 20_000
+DATA_DIM = 200
+# use 2.0 for gaussian kernel (d_eff=15), 1.2 laplace (d_eff=50)
+DATA_EIGVAL_EXP = 1.2
+ZCA_STRENGTH = 1e-2
+TARGET = "monomials"
+
+hypers = dict(expt_name=EXPT_NAME, dataset=DATASET, kernel_name=KERNEL_TYPE.__name__,
+              kernel_width=KERNEL_WIDTH, n_samples=N_SAMPLES, p_modes=P_MODES,
+              data_dim=DATA_DIM, data_eigval_exp=DATA_EIGVAL_EXP,
+              zca_strength=ZCA_STRENGTH,
+              target=TARGET)
+
+source_exps = [1.01, 1.1, 1.25, 1.5, 2.0]
+target_monomials = [{0:1}, {160:1}, {1:1, 2:1}, {30:1,40:1}, {1:2, 2:1}, {10:1, 12:1, 14:1},
+                    {0:1, 1:1, 2:1, 3:1}]
 
 # SETUP FILE MANAGEMENT
 #######################
@@ -39,65 +48,75 @@ if datapath is None:
     raise ValueError("must set $DATASETPATH environment variable")
 if exptpath is None:
     raise ValueError("must set $EXPTPATH environment variable")
-expt_dir = os.path.join(exptpath, "phlab", hypers.expt_name, hypers.dataset)
-expt_dir = os.path.join(expt_dir, hypers.generate_filepath())
+fp = f"{KERNEL_TYPE.__name__}-kw:{KERNEL_WIDTH}-target:{TARGET}"
+if DATASET == "gaussian":
+    fp += f"-data:{DATA_DIM}:{DATA_EIGVAL_EXP}"
+else:
+    fp += f"-zca:{ZCA_STRENGTH}"
+expt_dir = os.path.join(exptpath, "phlab", EXPT_NAME, DATASET, fp)
 
 if not os.path.exists(expt_dir):
     os.makedirs(expt_dir)
 expt_fm = FileManager(expt_dir)
 print(f"Working in directory {expt_dir}.")
-hypers.save(expt_fm.get_filename("hypers.json"))
+with open(expt_fm.get_filename("hypers.json"), 'w') as f:
+    json.dump(hypers, f, indent=4)
 
 # START EXPERIMENT
 ##################
 
-kerneltype = {
-    "GaussianKernel": GaussianKernel,
-    "LaplaceKernel": LaplaceKernel
-}[hypers.kernel_name]
-
-if hypers.dataset == "gaussian":
-    data_eigvals = get_powerlaw(hypers.data_dim, hypers.data_eigval_exp, offset=6)
-    N, d = hypers.n_samples, hypers.data_dim
+if DATASET == "gaussian":
+    data_eigvals = get_powerlaw(DATA_DIM, DATA_EIGVAL_EXP, offset=6)
     # on average, we expect norm(x_i) ~ Tr(data_eigvals)
-    X = ensure_torch(torch.normal(0, 1, (N, d))) * torch.sqrt(ensure_torch(data_eigvals))
-
-if hypers.dataset in ["cifar10", "imagenet32"]:
-    if hypers.dataset == "cifar10":
+    X = ensure_torch(torch.normal(0, 1, (N_SAMPLES, DATA_DIM)))
+    X *= torch.sqrt(ensure_torch(data_eigvals))
+if DATASET in ["cifar10", "imagenet32"]:
+    if DATASET == "cifar10":
         data_dir = os.path.join(datapath, "cifar10")
         cifar10 = ImageData('cifar10', data_dir, classes=None)
-        X_raw, _ = cifar10.get_dataset(hypers.n_samples, get="train")
-    if hypers.dataset == "imagenet32":
-        fn = os.path.join(datapath, "imagenet", f"{hypers.dataset}.npz")
+        X_raw, _ = cifar10.get_dataset(N_SAMPLES, get="train")
+    if DATASET == "imagenet32":
+        fn = os.path.join(datapath, "imagenet", f"{DATASET}.npz")
         data = np.load(fn)
-        X_raw = data['data'][:hypers.n_samples].astype(float)
+        X_raw = data['data'][:N_SAMPLES].astype(float)
         X_raw = rearrange(X_raw, 'n (c h w) -> n c h w', c=3, h=32, w=32)
-    X = preprocess(X_raw, center=True, grayscale=True, zca_strength=hypers.zca_strength)
+    X = preprocess(X_raw, center=True, grayscale=True, zca_strength=ZCA_STRENGTH)
     X = ensure_torch(X)
     # ensure typical sample has unit norm
     S = torch.linalg.svdvals(X)
-    X *= torch.sqrt(hypers.n_samples / (S**2).sum())
+    X *= torch.sqrt(N_SAMPLES / (S**2).sum())
     data_eigvals = S**2 / (S**2).sum()
 
-d_eff = 1/(data_eigvals**2).sum()
+d_eff = 1/(data_eigvals**2).sum().item()
+print(f"d_eff: {d_eff:.2f}", end="\n")
 
-eval_level_coeff = kerneltype.get_level_coeff_fn(data_eigvals=data_eigvals,
-                                                 kernel_width=hypers.kernel_width)
-hehe_eigvals, monomials = generate_fra_monomials(data_eigvals, hypers.p_modes, eval_level_coeff)
-H = get_matrix_hermites(X, monomials[:hypers.p_modes])
-
-kernel = kerneltype(X, kernel_width=hypers.kernel_width)
+kernel = KERNEL_TYPE(X, kernel_width=KERNEL_WIDTH)
 K = ensure_torch(kernel.K)
 
-if True or hypers.dataset == "gaussian":
-    targets = {}
-    source_exps = [1.01, 1.25, 1.5, 2.0]
+eval_level_coeff = KERNEL_TYPE.get_level_coeff_fn(data_eigvals=data_eigvals,
+                                                  kernel_width=KERNEL_WIDTH)
+hehe_eigvals, monomials = generate_fra_monomials(data_eigvals, P_MODES, eval_level_coeff)
+H = get_matrix_hermites(X, monomials[:P_MODES])
+
+targets = {}
+if TARGET == "powerlaws":
     for source_exp in source_exps:
         ystar = get_powerlaw_target(H, source_exp, include_noise=False)
         targets[source_exp] = ensure_numpy(ystar)
-if hypers.dataset == "cifar10":
-    pass
-if hypers.dataset == "imagenet32":
+if TARGET == "monomials":
+    monomial_idxs = []
+    for tmon in target_monomials:
+        try:
+            monomial_idxs.append(monomials.index(tmon))
+        except ValueError:
+            print(f"Warning: target {tmon} not in generated monomials. Skipping.")
+    assert len(monomial_idxs) > 0
+    
+    if sorted(monomial_idxs) == monomial_idxs:
+        print("target monomials are monotonic :(")
+    for idx in monomial_idxs:
+        targets[idx] = ensure_numpy(H[:, idx])
+if TARGET == "true":
     pass
 
 def get_ntrials(ntrain):
@@ -107,7 +126,7 @@ def get_ntrials(ntrain):
     else: return 2
 
 ntest = 5000
-log_ntrain_max = np.log10((hypers.n_samples - ntest) / 2)
+log_ntrain_max = np.log10(N_SAMPLES - ntest)
 ntrains = np.logspace(1, log_ntrain_max, base=10, num=50).astype(int)
 ridges = [1e-4]
 
@@ -132,7 +151,7 @@ expt_fm.save(ensure_numpy(emp_eigvecs), "emp_eigvecs.npy")
 expt_fm.save(ensure_numpy(H), "H.npy")
 expt_fm.save(targets, "targets.pickle")
 iso_data_eigvals = torch.ones_like(data_eigvals) / len(data_eigvals)
-iso_eigvals, _ = generate_fra_monomials(iso_data_eigvals, hypers.p_modes, eval_level_coeff)
+iso_eigvals, _ = generate_fra_monomials(iso_data_eigvals, P_MODES, eval_level_coeff)
 result = {
     "monomials": [dict(m) for m in monomials],
     "d_eff": d_eff,
