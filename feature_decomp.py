@@ -65,7 +65,7 @@ def generate_fra_monomials(data_covar_eigvals, num_monomials, eval_level_coeff, 
     # Each entry in the priority queue is (-fra_eigval, Monomial({idx:exp, ...}))
     pq = [(-get_fra_eigval(data_covar_eigvals, Monomial({0:1}), eval_level_coeff), Monomial({0:1}))]
     heapq.heapify(pq)
-    with trange(num_monomials, desc="Eigval Finder", unit="step", total=num_monomials) as pbar:
+    with trange(num_monomials, desc="Generating monomials", unit="step", total=num_monomials) as pbar:
         for j in pbar:
             if not pq:
                 return np.array(fra_eigvals), monomials
