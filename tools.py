@@ -42,7 +42,7 @@ def get_test_mses(K, y, num_estimators=20, n_test=100, n_trials=20, **kwargs):
             test_mse_ots = test_mse_ots.sum().item()
 
             test_mse_tot = torch.cat([se_train, se_test], dim=0).mean(axis=0)
-            test_mse_tot = test_mse_ots.sum().item()
+            test_mse_tot = test_mse_tot.sum().item()
 
             test_mses_ots[trial, i] = test_mse_ots
             test_mses_tots[trial, i] = test_mse_tot
