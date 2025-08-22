@@ -35,7 +35,7 @@ def get_test_mses(K, y, num_estimators=20, n_test=100, n_trials=20, **kwargs):
         for trial in range(n_trials):
             (y_hat_test, y_test), (y_hat_train, y_train) = krr(K, y, n_train=n, n_test=n_test, ridge=kwargs.get("ridge", 1e-20))
             
-            se_trian = (y_train - y_hat_train) ** 2
+            se_train = (y_train - y_hat_train) ** 2
             se_test = (y_test - y_hat_test) ** 2
             
             test_mse_ots = se_test.mean(axis=0)
