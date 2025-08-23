@@ -28,18 +28,26 @@ def get_test_mses(K, y, num_estimators=20, n_test=100, n_trials=20, **kwargs):
         sizes = np.logspace(np.log10(kwargs.get("size_start", 100)), np.log10(K.shape[0]-n_test)-kwargs.get('size_offset', 0.01), num=num_estimators)
     K = ensure_torch(K)
     y = ensure_torch(y)
-    test_mses = np.zeros((n_trials, len(sizes)))
+    test_mses_ots = np.zeros((n_trials, len(sizes)))
+    test_mses_tots = np.zeros((n_trials, len(sizes)))
     for i, n in enumerate(sizes):
         n = int(n)
         for trial in range(n_trials):
-            (y_hat_test, y_test), _ = krr(K, y, n_train=n, n_test=n_test, ridge=kwargs.get("ridge", 1e-20))
+            (y_hat_test, y_test), (y_hat_train, y_train) = krr(K, y, n_train=n, n_test=n_test, ridge=kwargs.get("ridge", 1e-20))
             
-            test_mse = ((y_test - y_hat_test) ** 2).mean(axis=0)
-            test_mse = test_mse.sum().item()
+            se_train = (y_train - y_hat_train) ** 2
+            se_test = (y_test - y_hat_test) ** 2
+            
+            test_mse_ots = se_test.mean(axis=0)
+            test_mse_ots = test_mse_ots.sum().item()
 
-            test_mses[trial, i] = test_mse
+            test_mse_tot = torch.cat([se_train, se_test], dim=0).mean(axis=0)
+            test_mse_tot = test_mse_tot.sum().item()
+
+            test_mses_ots[trial, i] = test_mse_ots
+            test_mses_tots[trial, i] = test_mse_tot
             torch.cuda.empty_cache()
-    return sizes, test_mses
+    return sizes, test_mses_ots, test_mses_tots
 
 def find_beta(K, y, num_estimators=20, n_test=100, n_trials=20, **kwargs):
     sizes, test_mses = get_test_mses(K=K, y=y, num_estimators=num_estimators, n_test=n_test, n_trials=n_trials, **kwargs)
