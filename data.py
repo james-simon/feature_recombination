@@ -54,14 +54,19 @@ def get_matrix_hermites(X, monomials, previously_normalized=False):
     return H
 
 
-def get_powerlaw_target(H, source_exp, offset=6, include_noise=True):
+def get_powerlaw_target(H, source_exp, offset=6, normalizeH=True, include_noise=False):
     if source_exp <= 1:
         raise ValueError("source_exp must be > 1 for powerlaw target")
     if offset < 1:
         raise ValueError("offset ≥ 1required")
     N, P = H.shape
+    if normalizeH:
+        H /= torch.linalg.norm(H, dim=0, keepdim=True)
     squared_coeffs = get_powerlaw(P, source_exp, offset=offset)
-    y = H @ torch.sqrt(squared_coeffs)
+    # Generate random signs for coefficients
+    signs = -1 + 2*ensure_torch(torch.randint(0, 2, size=squared_coeffs.shape))
+    coeffs = torch.sqrt(squared_coeffs) * signs.float()
+    y = H @ coeffs
     if include_noise:
         totalsum = zeta(source_exp, offset)  # sum_{k=offset  }^infty k^{-exp}
         tailsum = zeta(source_exp, offset+P) # sum_{k=offset+P}^infty k^{-exp}
@@ -71,5 +76,5 @@ def get_powerlaw_target(H, source_exp, offset=6, include_noise=True):
         y /= torch.linalg.norm(y)
         y += ensure_torch(noise)
     # we expect size(y_i) ~ 1
-    y = np.sqrt(N) * y / torch.linalg.norm(y)    
+    y = np.sqrt(N) * y / torch.linalg.norm(y)
     return y
