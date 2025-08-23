@@ -17,17 +17,45 @@ from feature_decomp import generate_fra_monomials
 from utils import ensure_torch, ensure_numpy
 from data import get_powerlaw, get_matrix_hermites, get_powerlaw_target
 
+
 EXPT_NAME = "hehe-eigenlearning"
-DATASET = "gaussian"
-KERNEL_TYPE = LaplaceKernel
 KERNEL_WIDTH = 4
-N_SAMPLES = 20_000
-P_MODES = 20_000
+N_SAMPLES = 25_000
+P_MODES = 25_000
 DATA_DIM = 200
-# use 2.0 for gaussian kernel (d_eff=15), 1.2 laplace (d_eff=50)
-DATA_EIGVAL_EXP = 1.2
-ZCA_STRENGTH = 1e-2
-TARGET = "monomials"
+TARGET = "powerlaws"
+
+# Allow command line argument
+if len(sys.argv) == 1:
+    DATASET = "gaussian"
+    KERNEL_TYPE = GaussianKernel
+else:    
+    try:
+        expt_id = int(sys.argv[1])
+        if expt_id == 1:
+            DATASET = "gaussian"
+            KERNEL_TYPE = GaussianKernel
+        elif expt_id == 2:
+            DATASET = "gaussian"
+            KERNEL_TYPE = LaplaceKernel
+        elif expt_id == 3:
+            DATASET = "cifar10"
+            KERNEL_TYPE = GaussianKernel
+        elif expt_id == 4:
+            DATASET = "cifar10"
+            KERNEL_TYPE = LaplaceKernel
+        else:
+            raise ValueError("Invalid expt number")
+    except ValueError:
+        print("Error: Argument must be an integer")
+        sys.exit(1)
+
+if KERNEL_TYPE == GaussianKernel:
+    DATA_EIGVAL_EXP = 2.0   # d_eff = 15
+    ZCA_STRENGTH = 5e-3     # d_eff = 18
+if KERNEL_TYPE == LaplaceKernel:
+    DATA_EIGVAL_EXP = 1.6   # d_eff = 27
+    ZCA_STRENGTH = 1e-2     # d_eff = 26
 
 hypers = dict(expt_name=EXPT_NAME, dataset=DATASET, kernel_name=KERNEL_TYPE.__name__,
               kernel_width=KERNEL_WIDTH, n_samples=N_SAMPLES, p_modes=P_MODES,
@@ -36,8 +64,7 @@ hypers = dict(expt_name=EXPT_NAME, dataset=DATASET, kernel_name=KERNEL_TYPE.__na
               target=TARGET)
 
 source_exps = [1.01, 1.1, 1.25, 1.5, 2.0]
-target_monomials = [{0:1}, {160:1}, {1:1, 2:1}, {30:1,40:1}, {1:2, 2:1}, {10:1, 12:1, 14:1},
-                    {0:1, 1:1, 2:1, 3:1}]
+target_monomials = [{10:1}, {190:1}, {0:2}, {1:1, 2:1}, {20:1,30:1}, {0:3}, {1:2, 2:1}]
 
 # SETUP FILE MANAGEMENT
 #######################
@@ -101,7 +128,8 @@ H = get_matrix_hermites(X, monomials[:P_MODES])
 targets = {}
 if TARGET == "powerlaws":
     for source_exp in source_exps:
-        ystar = get_powerlaw_target(H, source_exp, include_noise=False)
+        # get_powerlaw_target ensures size(y_i) ~ 1
+        ystar = get_powerlaw_target(H, source_exp)
         targets[source_exp] = ensure_numpy(ystar)
 if TARGET == "monomials":
     monomial_idxs = []
@@ -115,7 +143,11 @@ if TARGET == "monomials":
     if sorted(monomial_idxs) == monomial_idxs:
         print("target monomials are monotonic :(")
     for idx in monomial_idxs:
-        targets[idx] = ensure_numpy(H[:, idx])
+        ystar = ensure_numpy(H[:, idx])
+        # ensure size(y_i) ~ 1
+        targets[idx] = np.sqrt(N_SAMPLES) * ystar / np.linalg.norm(ystar)
+    print(f"target idxs: {monomial_idxs}")
+    # print(f"target eigvals: {hehe_eigvals[monomial_idxs]}")
 if TARGET == "true":
     pass
 
@@ -126,8 +158,8 @@ def get_ntrials(ntrain):
     else: return 2
 
 ntest = 5000
-log_ntrain_max = np.log10(N_SAMPLES - ntest)
-ntrains = np.logspace(1, log_ntrain_max, base=10, num=50).astype(int)
+log_ntrain_max = np.log10((N_SAMPLES - ntest)/1.1)
+ntrains = np.logspace(1, log_ntrain_max, base=10, num=30).astype(int)
 ridges = [1e-4]
 
 var_axes = ["trial", "ntrain", "ridge", "target"]
@@ -146,6 +178,7 @@ for target, ystar in targets.items():
         print()
     print()
 
+torch.cuda.empty_cache()
 emp_eigvals, emp_eigvecs = kernel.eigendecomp()
 expt_fm.save(ensure_numpy(emp_eigvecs), "emp_eigvecs.npy")
 expt_fm.save(ensure_numpy(H), "H.npy")
@@ -162,3 +195,4 @@ result = {
     "y_hat": et_yhat.serialize()
 }
 expt_fm.save(result, "result.pickle")
+torch.cuda.empty_cache()
