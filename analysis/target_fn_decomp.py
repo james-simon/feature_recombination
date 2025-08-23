@@ -3,9 +3,7 @@ import torch
 from itertools import product
 
 from utils import ensure_torch
-from tools import get_standard_tools
-from data_old import get_synthetic_dataset, ImageData
-from tools import find_beta
+from data_old import get_synthetic_dataset
 from tqdm import trange
 
 #helper fns v_tilde_experiment
