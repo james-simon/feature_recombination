@@ -19,17 +19,17 @@ from data import get_powerlaw, get_matrix_hermites, get_powerlaw_target
 
 
 EXPT_NAME = "hehe-eigenlearning"
-KERNEL_WIDTH = 4
-N_SAMPLES = 25_000
-P_MODES = 25_000
+KERNEL_WIDTH = 10
+N_SAMPLES = 26_000
+P_MODES = 100_000
 DATA_DIM = 200
-TARGET = "powerlaws"
+TARGET = "true"
 
 # Allow command line argument
 if len(sys.argv) == 1:
     DATASET = "gaussian"
     KERNEL_TYPE = GaussianKernel
-else:    
+else:
     try:
         expt_id = int(sys.argv[1])
         if expt_id == 1:
@@ -51,20 +51,24 @@ else:
         sys.exit(1)
 
 if KERNEL_TYPE == GaussianKernel:
-    DATA_EIGVAL_EXP = 2.0   # d_eff = 15
-    ZCA_STRENGTH = 5e-3     # d_eff = 18
+    RIDGE = 1e-3
+    DATA_EIGVAL_EXP = 3.0   # d_eff = 7
+    ZCA_STRENGTH = 0        # d_eff = 7 cf10
+    target_monomials = [{10:1}, {190:1}, {0:2}, {2:1, 3:1}, {15:1,20:1}, {0:3}]
+    source_exps = [1.01, 1.1, 1.25, 1.5, 2.0]
 if KERNEL_TYPE == LaplaceKernel:
+    RIDGE = 1e-3
     DATA_EIGVAL_EXP = 1.6   # d_eff = 27
-    ZCA_STRENGTH = 1e-2     # d_eff = 26
+    ZCA_STRENGTH = 1e-2     # d_eff = 26 cf10
+    target_monomials = [{10:1}, {190:1}, {0:2}, {2:1, 3:1}, {20:1,30:1}, {0:3}, {1:2, 2:1}]
+    source_exps = [1.01, 1.1, 1.25, 1.5, 2.0]
 
 hypers = dict(expt_name=EXPT_NAME, dataset=DATASET, kernel_name=KERNEL_TYPE.__name__,
               kernel_width=KERNEL_WIDTH, n_samples=N_SAMPLES, p_modes=P_MODES,
               data_dim=DATA_DIM, data_eigval_exp=DATA_EIGVAL_EXP,
               zca_strength=ZCA_STRENGTH,
-              target=TARGET)
+              ridge=RIDGE, target=TARGET)
 
-source_exps = [1.01, 1.1, 1.25, 1.5, 2.0]
-target_monomials = [{10:1}, {190:1}, {0:2}, {1:1, 2:1}, {20:1,30:1}, {0:3}, {1:2, 2:1}]
 
 # SETUP FILE MANAGEMENT
 #######################
@@ -89,7 +93,7 @@ print(f"Working in directory {expt_dir}.")
 with open(expt_fm.get_filename("hypers.json"), 'w') as f:
     json.dump(hypers, f, indent=4)
 
-# START EXPERIMENT
+# SETUP EXPERIMENT
 ##################
 
 if DATASET == "gaussian":
@@ -100,8 +104,12 @@ if DATASET == "gaussian":
 if DATASET in ["cifar10", "imagenet32"]:
     if DATASET == "cifar10":
         data_dir = os.path.join(datapath, "cifar10")
-        cifar10 = ImageData('cifar10', data_dir, classes=None)
-        X_raw, _ = cifar10.get_dataset(N_SAMPLES, get="train")
+        if TARGET == "true":
+            # plane car ship vs bird cat deer
+            classes = [[0, 1, 8], [2, 3, 4]]
+        else: classes = None
+        cifar10 = ImageData('cifar10', data_dir, classes=classes)
+        X_raw, labels = cifar10.get_dataset(N_SAMPLES, get="train")
     if DATASET == "imagenet32":
         fn = os.path.join(datapath, "imagenet", f"{DATASET}.npz")
         data = np.load(fn)
@@ -123,7 +131,7 @@ K = ensure_torch(kernel.K)
 eval_level_coeff = KERNEL_TYPE.get_level_coeff_fn(data_eigvals=data_eigvals,
                                                   kernel_width=KERNEL_WIDTH)
 hehe_eigvals, monomials = generate_fra_monomials(data_eigvals, P_MODES, eval_level_coeff)
-H = get_matrix_hermites(X, monomials[:P_MODES])
+H = get_matrix_hermites(X, monomials)
 
 targets = {}
 if TARGET == "powerlaws":
@@ -147,9 +155,16 @@ if TARGET == "monomials":
         # ensure size(y_i) ~ 1
         targets[idx] = np.sqrt(N_SAMPLES) * ystar / np.linalg.norm(ystar)
     print(f"target idxs: {monomial_idxs}")
-    # print(f"target eigvals: {hehe_eigvals[monomial_idxs]}")
 if TARGET == "true":
-    pass
+    if DATASET == "cifar10":
+        targets["animal"] = ensure_numpy(labels[:, 1])
+
+expt_fm.save(ensure_numpy(H, dtype=np.float32), "H.npy")
+del H
+torch.cuda.empty_cache()
+
+# START EXPERIMENT
+##################
 
 def get_ntrials(ntrain):
     if ntrain < 100: return 20
@@ -157,35 +172,31 @@ def get_ntrials(ntrain):
     elif ntrain < 10000: return 5
     else: return 2
 
-ntest = 5000
+ntest = 5_000
 log_ntrain_max = np.log10((N_SAMPLES - ntest)/1.1)
 ntrains = np.logspace(1, log_ntrain_max, base=10, num=30).astype(int)
-ridges = [1e-4]
 
-var_axes = ["trial", "ntrain", "ridge", "target"]
+var_axes = ["trial", "ntrain", "target"]
 et_yhat = ExptTrace(var_axes)
 
 for target, ystar in targets.items():
     print("Starting target: ", target)
     ystar = ensure_torch(ystar)
-    for ridge in ridges:
-        print(f"ridge={ridge}, ntrains:", end=" ", flush=True)
-        for ntrain in ntrains:
-            print(f"{ntrain}", end=" ", flush=True)
-            for trial in range(get_ntrials(ntrain)):
-                (y_hat, y_test), _ = krr(K, ystar, ntrain, n_test=ntest, ridge=ridge)
-                et_yhat[trial, ntrain, ridge, target] = y_hat.cpu().numpy()
-        print()
-    print()
+    print(f"ridge={RIDGE}, ntrains:", end=" ", flush=True)
+    for ntrain in ntrains:
+        print(f"{ntrain}", end=" ", flush=True)
+        for trial in range(get_ntrials(ntrain)):
+            (y_hat, _), _ = krr(K, ystar, ntrain, n_test=ntest, ridge=RIDGE)
+            et_yhat[trial, ntrain, target] = y_hat.cpu().numpy()
+    print("\n")
 
-torch.cuda.empty_cache()
 emp_eigvals, emp_eigvecs = kernel.eigendecomp()
 expt_fm.save(ensure_numpy(emp_eigvecs), "emp_eigvecs.npy")
-expt_fm.save(ensure_numpy(H), "H.npy")
 expt_fm.save(targets, "targets.pickle")
 iso_data_eigvals = torch.ones_like(data_eigvals) / len(data_eigvals)
 iso_eigvals, _ = generate_fra_monomials(iso_data_eigvals, P_MODES, eval_level_coeff)
 result = {
+    "ridge": RIDGE,
     "monomials": [dict(m) for m in monomials],
     "d_eff": d_eff,
     "n_test": ntest,
