@@ -12,4 +12,5 @@ dist/
 .testing/
 scratch.ipynb
 *DEPRECATED*
-.vscode
+.vscode/
+nohup.out
