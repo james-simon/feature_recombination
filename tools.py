@@ -1,10 +1,13 @@
 import numpy as np
 import torch
+from tqdm import tqdm, trange
+
+from ExptTrace import ExptTrace
 
 from feature_decomp import generate_fra_monomials
 from data import get_matrix_hermites
 from kernels import krr
-from utils import ensure_torch
+from utils import ensure_numpy, ensure_torch
 
 
 def get_standard_tools(X, kerneltype, kernel_width, top_mode_idx=3000, data_eigvals=None, kmax=20):
@@ -61,3 +64,57 @@ def find_beta(K, y, num_estimators=20, n_test=100, n_trials=20, **kwargs):
     beta = -slope+1
 
     return beta, intercept, sizes, test_mses
+
+
+def estimate_beta(K, y, n_trains, n_test=5_000, n_tailstart=800):
+    
+    def get_ntrials(ntrain):
+        if ntrain < 100: return 20
+        elif ntrain < 1000: return 10
+        elif ntrain < 10000: return 5
+        else: return 1
+    
+    assert n_trains.dtype == int
+    assert n_trains.min() > 0
+    assert n_trains.max() + n_test <= K.shape[0]
+    K = ensure_torch(K)
+    y = ensure_torch(y)
+    var_axes = ["trial", "ntrain"]
+    et_yhat = ExptTrace(var_axes)
+    for n_train in tqdm(n_trains):
+        for trial in range(get_ntrials(n_train)):
+            (y_hat, _), _ = krr(K, y, n_train, n_test=n_test, ridge=1e-3)
+            et_yhat[trial, n_train] = y_hat.cpu().numpy()
+        torch.cuda.empty_cache()
+
+    yhat = et_yhat[:, :]
+    ystar = ensure_numpy(y[-n_test:])
+    mse_trials = ((yhat - ystar)**2).mean(axis=-1)
+    mse = mse_trials.mean(axis=0)
+    
+    # Fit powerlaw to the tail of the curve (n >= n_tailstart)
+    tail_mask = n_trains >= n_tailstart
+    assert tail_mask.sum() >= 2
+    log_n = np.log(n_trains[tail_mask])
+    log_mse = np.log(mse[tail_mask])
+    poly = np.polynomial.Polynomial.fit(log_n, log_mse, deg=1)
+    intercept, slope = poly.convert().coef
+    coeff, beta = np.e**intercept, -slope + 1
+    return beta, coeff, mse_trials
+
+
+def grf(H, y, P):
+    if P is None:
+        P = H.shape[1]
+    assert P <= H.shape[1], "P must not exceed num modes"
+
+    vhat = ensure_torch(torch.zeros(P))
+    residual = y.clone()
+    with trange(P, desc="GRF", unit="step", total=P) as pbar:
+        for j in pbar:
+            phi_j = H[:, j]
+            vhat[j] = torch.dot(phi_j, residual) / torch.linalg.norm(phi_j) ** 2
+            residual -= vhat[j] * phi_j
+            pbar.set_postfix(uncaptured=residual.std().item())
+    uncaptured = residual.std().item()
+    return vhat, uncaptured
