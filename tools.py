@@ -100,13 +100,16 @@ def grf(H, y, P):
         P = H.shape[1]
     assert P <= H.shape[1], "P must not exceed num modes"
 
+    H = ensure_torch(H)
+    y = ensure_torch(y)
     vhat = ensure_torch(torch.zeros(P))
+    uncaptured = np.zeros(P)
     residual = y.clone()
     with trange(P, desc="GRF", unit="step", total=P) as pbar:
         for j in pbar:
             phi_j = H[:, j]
             vhat[j] = torch.dot(phi_j, residual) / torch.linalg.norm(phi_j) ** 2
             residual -= vhat[j] * phi_j
-            pbar.set_postfix(uncaptured=residual.std().item())
-    uncaptured = residual.std().item()
-    return vhat, uncaptured
+            uncaptured[j] = residual.var().item()
+            pbar.set_postfix(uncaptured=uncaptured[j])
+    return ensure_numpy(vhat), uncaptured
