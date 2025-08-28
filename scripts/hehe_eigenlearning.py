@@ -23,37 +23,47 @@ KERNEL_WIDTH = 10
 N_SAMPLES = 26_000
 P_MODES = 100_000
 DATA_DIM = 200
-TARGET = "true"
+
+
+# Defaults
+DATASET = "gaussian"
+KERNEL_TYPE = GaussianKernel
+TARGET = "monomials"
 
 # Allow command line argument
-if len(sys.argv) == 1:
-    DATASET = "gaussian"
-    KERNEL_TYPE = GaussianKernel
-else:
+if len(sys.argv) > 1:
     try:
         expt_id = int(sys.argv[1])
-        if expt_id == 1:
-            DATASET = "gaussian"
-            KERNEL_TYPE = GaussianKernel
-        elif expt_id == 2:
-            DATASET = "gaussian"
-            KERNEL_TYPE = LaplaceKernel
-        elif expt_id == 3:
-            DATASET = "cifar10"
-            KERNEL_TYPE = GaussianKernel
-        elif expt_id == 4:
-            DATASET = "cifar10"
-            KERNEL_TYPE = LaplaceKernel
-        else:
-            raise ValueError("Invalid expt number")
     except ValueError:
-        print("Error: Argument must be an integer")
+        print("Error: Expt num must be an integer")
         sys.exit(1)
+    if expt_id in [1, 2]:
+        DATASET = "gaussian"
+    elif expt_id in [3, 4]:
+        DATASET = "cifar10"
+    elif expt_id in [5, 6]:
+        DATASET = "svhn"
+    else:
+        raise ValueError("Invalid expt number")
+    if expt_id % 2 == 1:
+        KERNEL_TYPE = GaussianKernel
+    else:
+        KERNEL_TYPE = LaplaceKernel
+if len(sys.argv) > 2:
+    TARGET = sys.argv[2]
+    assert TARGET in ["monomials", "powerlaws", "original", "vehicle", "domesticated", "evenodd", "loops"]
+    if TARGET == "original": assert DATASET in ["cifar10", "svhn"]
+    if TARGET == "vehicle": assert DATASET == "cifar10"
+    if TARGET == "domesticated": assert DATASET == "cifar10"
+    if TARGET == "evenodd": assert DATASET == "svhn"
+    if TARGET == "loops": assert DATASET == "svhn"
 
 if KERNEL_TYPE == GaussianKernel:
     RIDGE = 1e-3
     DATA_EIGVAL_EXP = 3.0   # d_eff = 7
     ZCA_STRENGTH = 0        # d_eff = 7 cf10
+    if DATASET == "svhn":
+        ZCA_STRENGTH = 5e-3 # d_eff = 9
     target_monomials = [{10:1}, {190:1}, {0:2}, {2:1, 3:1}, {15:1,20:1}, {0:3}]
     source_exps = [1.01, 1.1, 1.25, 1.5, 2.0]
 if KERNEL_TYPE == LaplaceKernel:
@@ -101,15 +111,29 @@ if DATASET == "gaussian":
     # on average, we expect norm(x_i) ~ Tr(data_eigvals)
     X = ensure_torch(torch.normal(0, 1, (N_SAMPLES, DATA_DIM)))
     X *= torch.sqrt(ensure_torch(data_eigvals))
-if DATASET in ["cifar10", "imagenet32"]:
+if DATASET in ["cifar10", "imagenet32", "svhn"]:
     if DATASET == "cifar10":
         data_dir = os.path.join(datapath, "cifar10")
-        if TARGET == "true":
-            # plane car ship vs bird cat deer
-            classes = [[0, 1, 8], [2, 3, 4]]
+        if TARGET == "vehicle":
+            # plane car ship truck vs bird cat deer dog
+            classes = [[0, 1, 8, 9], [2, 3, 4, 5]]
+        if TARGET == "domesticated":
+            # cat dog horse vs bird deer frog
+            classes = [[3, 5, 7], [2, 4, 6]]
         else: classes = None
         cifar10 = ImageData('cifar10', data_dir, classes=classes)
         X_raw, labels = cifar10.get_dataset(N_SAMPLES, get="train")
+    if DATASET == "svhn":
+        data_dir = os.path.join(datapath, "svhn")
+        if TARGET == "evenodd":
+            # plane car ship truck vs bird cat deer dog
+            classes = [[0, 2, 4, 6, 8], [1, 3, 5, 7, 9]]
+        if TARGET == "loops":
+            # cat dog horse vs bird deer frog
+            classes = [[0, 6, 8, 9], [1, 3, 5, 7]]
+        else: classes = None
+        svhn = ImageData('svhn', data_dir, classes=classes)
+        X_raw, labels = svhn.get_dataset(N_SAMPLES, get="train")
     if DATASET == "imagenet32":
         fn = os.path.join(datapath, "imagenet", f"{DATASET}.npz")
         data = np.load(fn)
@@ -134,11 +158,6 @@ hehe_eigvals, monomials = generate_fra_monomials(data_eigvals, P_MODES, eval_lev
 H = get_matrix_hermites(X, monomials)
 
 targets = {}
-if TARGET == "powerlaws":
-    for source_exp in source_exps:
-        # get_powerlaw_target ensures size(y_i) ~ 1
-        ystar = get_powerlaw_target(H, source_exp)
-        targets[source_exp] = ensure_numpy(ystar)
 if TARGET == "monomials":
     monomial_idxs = []
     for tmon in target_monomials:
@@ -155,9 +174,17 @@ if TARGET == "monomials":
         # ensure size(y_i) ~ 1
         targets[idx] = np.sqrt(N_SAMPLES) * ystar / np.linalg.norm(ystar)
     print(f"target idxs: {monomial_idxs}")
-if TARGET == "true":
-    if DATASET == "cifar10":
-        targets["animal"] = ensure_numpy(labels[:, 1])
+if TARGET == "powerlaws":
+    for source_exp in source_exps:
+        # get_powerlaw_target ensures size(y_i) ~ 1
+        ystar = get_powerlaw_target(H, source_exp)
+        targets[source_exp] = ensure_numpy(ystar)
+if TARGET == "original":
+    for i in range(10):
+        # z-score normalization ensures size(y_i) ~ 1
+        targets[i] = ensure_numpy(1/3 * (-1 + 10*labels[:, i]))
+if TARGET in ["vehicle", "domesticated", "evenodd", "loops"]:
+    targets[TARGET] = ensure_numpy(-1 + 2*labels[:, 1])
 
 expt_fm.save(ensure_numpy(H, dtype=np.float32), "H.npy")
 del H
