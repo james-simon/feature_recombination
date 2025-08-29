@@ -253,6 +253,78 @@ class LaplaceKernel(Kernel):
         obj.kernel_width = data["kernel_width"]
         return obj
 
+class ReLUNTKKernel(Kernel):
+
+    def __init__(self, X, **kwargs):
+        super().__init__(X)
+        self.sigma_w2 = kwargs["sigma_w2"] #cov of weight entries
+        self.sigma_b2 = kwargs["sigma_b2"] #cov of bias entries
+      
+        eps = 1e-12
+
+        G = self.X  @ self.X .T
+        nrm = torch.linalg.norm(X, dim=1, keepdim=True).clamp_min(eps)
+        denom = (nrm @ nrm.T).clamp_min(eps)
+        rho = (G / denom).clamp(-1 + eps, 1 - eps)
+
+        self.s2 = self.sigma_w2 + self.sigma_b2
+        self.a = self.sigma_b2 / self.s2
+        b = self.sigma_w2 / self.s2
+        rho_tilde = self.a + b * rho
+
+        acos = torch.acos(rho_tilde)
+        sqrt_term = torch.sqrt(torch.clamp(1 - rho_tilde**2, min=0))
+        H = (np.pi - acos) / 2.0 * np.pi
+        J = (sqrt_term + (np.pi - acos) * rho_tilde) / 2.0 * np.pi
+
+        self.K = self.s2 * J + self.sigma_w2 * rho * H
+
+
+    @staticmethod
+    def get_level_coeff_fn(self, **kwargs):     
+        H  = lambda z: (np.pi - np.arccos(z)) / (2*np.pi)
+        Hp = lambda z: 1.0/(2*np.pi) / np.sqrt(1 - z*z)
+        Hpp= lambda z: 1.0/(2*np.pi) * z / (1 - z*z)**(1.5)
+        H3 = lambda z: 1.0/(2*np.pi) * (1 + 2*z*z) / (1 - z*z)**(2.5)
+        H4 = lambda z: 1.0/(2*np.pi) * 3*z*(3 + 2*z*z) / (1 - z*z)**(3.5)
+        H5 = lambda z: (1.0/2*np.pi) * (9 + 72*z**2 + 24*z**4) / (1 - z*z)**(4.5)
+        H6 = lambda z: (1.0/2*np.pi) * (225*z + 600*z**3 + 120*z**5) / (1 - z*z)**(5.5)
+        H7 = lambda z: (1.0/2*np.pi) * (225 + 4050*z**2 + 5400*z**4 + 720*z**6) / (1 - z*z)**(6.5)
+        H8 = lambda z: (1.0/2*np.pi) * (11025*z + 66150*z**3 + 52920*z**5 + 5040*z**7) / (1 - z*z)**(7.5)
+        H9 = lambda z: (1.0/2*np.pi) * (11025 + 352800*z**2 + 1058400*z**4 + 564480*z**6 + 40320*z**8) / (1 - z*z)**(8.5)
+        J  = lambda z: 1.0/(2*np.pi) * (np.sqrt(1 - z*z) + (np.pi - np.arccos(z))*z)
+        
+        coeffs = {0: self.s2 * J(self.a),
+              1: 2*self.sigma_w2 * H(self.a),
+              2: (3*self.sigma_w2**2/self.s2) * Hp(self.a),
+              3: (4*self.sigma_w2**3/self.s2**2) * Hpp(self.a),
+              4: (5*self.sigma_w2**4/self.s2**3) * H3(self.a),
+              5: (6*self.sigma_w2**5/self.s2**4) * H4(self.a),
+              6: (7*self.sigma_w2**6/self.s2**5) * H5(self.a),
+              7: (8*self.sigma_w2**7/self.s2**6) * H6(self.a),
+              8: (9*self.sigma_w2**8/self.s2**7) * H7(self.a),
+              9: (10*self.sigma_w2**9/self.s2**8) * H8(self.a),
+              10: (11*self.sigma_w2**10/self.s2**9) * H9(self.a)}
+        
+        def eval_level_coeff(ell: int):
+            if not (0 <= ell <= 10):
+                raise ValueError("Only 0 <= ell <= 10 are precomputed here.")
+            return coeffs[ell]
+        return eval_level_coeff
+    
+    def serialize(self):
+        data = super().serialize()
+        data["sigma_w2"] = self.sigma_w2
+        data["sigma_b2"] = self.sigma_b2
+        return data
+    
+    @classmethod
+    def deserialize(cls, data):
+        obj = super().deserialize(data)
+        obj.sigma_w2 = data["sigma_w2"]
+        obj.sigma_b2 = data["sigma_b2"]
+        return obj
+
 
 # class ReluNNGPKernel(Kernel):
 

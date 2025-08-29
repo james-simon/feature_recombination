@@ -5,6 +5,8 @@ from scipy.special import zeta
 
 from utils import ensure_torch
 
+from feature_decomp import generate_fra_monomials
+
 
 def get_powerlaw(P, exp, offset=3, normalize=True):
     pl = ensure_torch((offset+np.arange(P)) ** -exp)
@@ -12,6 +14,25 @@ def get_powerlaw(P, exp, offset=3, normalize=True):
         pl /= pl.sum()
     return pl
 
+def get_synthetic_X(d=500, N=15000, offset=3, alpha=1.5, data_eigvals = None, **kwargs):
+    """
+    Powerlaw synthetic data
+    """
+    data_eigvals = get_powerlaw(d, alpha, offset=3, normalize=True) if data_eigvals is None else data_eigvals
+    X = ensure_torch(torch.normal(0, 1, (N, d))) * torch.sqrt(data_eigvals)
+    return X, data_eigvals
+
+def get_online_synthetic_data(lambdas, Vt, monomials, dim, bsz, data_eigvals, N):
+    """
+    Used for experiments where the number of samples needed is greater than can be stored;
+    primarily for training MLPs.
+
+    Requires some global eigenfunctions to have already been defined
+    """
+    X_new, _ = get_synthetic_X(d=dim, N=N, offset=None, alpha=None, data_eigvals=data_eigvals)
+    pca_x = X_new @ Vt.T @ torch.diag(lambdas**(-1.)) * N**(0.5)
+    y_new = get_matrix_hermites(pca_x, monomials, previously_normalized=True)*bsz**(0.5)
+    return X_new, y_new
 
 def get_matrix_hermites(X, monomials, previously_normalized=False):
     N, _ = X.shape
@@ -78,3 +99,28 @@ def get_powerlaw_target(H, source_exp, offset=6, normalizeH=True, include_noise=
     # we expect size(y_i) ~ 1
     y = np.sqrt(N) * y / torch.linalg.norm(y)
     return y
+
+def get_v_true(H, offset, beta, **kwargs):
+    """
+    Generates true underlying eigencoefficients
+    """
+    return get_powerlaw(H.shape[1], beta/2, offset=offset, normalize=True)
+
+def get_synthetic_dataset(X=None, data_eigvals=None, d=500, N=15000, offset=3, alpha=1.5, cutoff_mode=10000,
+                          noise_size=0.1, yoffset=3, beta=1.2, normalized=True, **vargs):
+    """
+    y_type: One of \"Gaussian\", \"Uniform\", \"Isotropic\", \"Binarized\", "\PowerLaw\", \"OneHot\", \"NHot\"
+    noise_size: total noise size of the N-dim target vector y
+    """
+    if X is None:
+        X, data_eigvals = get_synthetic_X(d=d, N=N, offset=offset, alpha=alpha)
+
+    kernel_width = vargs.get("kernel_width", 2)
+    kerneltype = vargs.get("kerneltype", None)
+    fra_eigvals, monomials = generate_fra_monomials(data_eigvals, cutoff_mode, kerneltype.get_level_coeff_fn(kernel_width=kernel_width, data_eigvals=data_eigvals), kmax=9)
+    H = ensure_torch(get_matrix_hermites(X, monomials))
+    fra_eigvals = ensure_torch(fra_eigvals)
+    v_true = get_powerlaw(H.shape[1], beta/2, offset=yoffset, normalize=normalized)
+    v_true = v_true if not normalized else v_true/torch.linalg.norm(v_true)* N**(0.5)
+    y = ensure_torch(H) @ v_true + ensure_torch(torch.normal(0., noise_size, (H.shape[0],)))#/H.shape[0]**(0.5)
+    return X, y, H, monomials, fra_eigvals, v_true

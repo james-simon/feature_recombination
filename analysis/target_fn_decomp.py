@@ -3,7 +3,7 @@ import torch
 from itertools import product
 
 from utils import ensure_torch
-from data_old import get_synthetic_dataset
+from data import get_synthetic_dataset, get_synthetic_X
 from tqdm import trange
 
 #helper fns v_tilde_experiment
@@ -110,3 +110,18 @@ def eigencoeff_experiment(input_dict):
         multi_idx = np.unravel_index(idx, shapes)
         all_v_tildes[multi_idx] = out[:P, :]
     return all_v_tildes, H, v_true, monomials
+
+def get_all_targets(target_monomials, dim=500, N=10_000, offset=3, alpha=2.01, cutoff_mode=1000, noise_size=1, normalized=True, **kwargs):
+    y_all = torch.zeros((N, len(target_monomials)))
+    locs = torch.zeros(len(target_monomials))
+
+    X, data_eigvals = get_synthetic_X(d=dim, N=N, offset=offset, alpha=alpha)
+    X, _, H, monomials, fra_eigvals, _ = get_synthetic_dataset(X, data_eigvals, ytype="OneHot", cutoff_mode=cutoff_mode,
+                            noise_size=noise_size, normalized=True, OneHotIndex = 1, **kwargs)
+
+    for i, monomial in enumerate(target_monomials):
+        loc = np.where(np.array(monomials) == monomial)[0][0]
+        locs[i] = loc
+        y_all[:, i] = H[:, loc] if not normalized else H[:, loc]*N**(0.5)
+
+    return X, y_all, locs, H, monomials, fra_eigvals, data_eigvals
