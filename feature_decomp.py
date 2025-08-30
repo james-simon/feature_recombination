@@ -1,6 +1,6 @@
 import heapq
 import numpy as np
-from tqdm import trange
+from tqdm import tqdm
 
 
 class Monomial(dict):
@@ -30,26 +30,25 @@ class Monomial(dict):
         return f"${monostr}$"
 
 
-def get_fra_eigval(data_eigvals, monomial, eval_level_coeff):
-    fra_eigval = eval_level_coeff(monomial.degree())
+def compute_hea_eigval(data_eigvals, monomial, eval_level_coeff):
+    hea_eigval = eval_level_coeff(monomial.degree())
     for i, exp in monomial.items():
-        fra_eigval *= data_eigvals[i].item() ** exp
-    return fra_eigval
+        hea_eigval *= data_eigvals[i].item() ** exp
+    return hea_eigval
 
 
-def generate_fra_monomials(data_covar_eigvals, num_monomials, eval_level_coeff, kmax=10):
+def generate_hea_monomials(data_covar_eigvals, num_monomials, eval_level_coeff, kmax=10):
     """
-    Generates monomials through a greedy search.
+    Generates HEA eigenvalues and monomials in canonical learning order.
 
     Args:
-        data_covar_eigvals (torch.Tensor): Eigenvalues of the covariance matrix.
+        data_covar_eigvals (iterable): data covariance eigenvalues
         num_monomials (int): Number of monomials to generate.
-        eval_level_coeff (function): Function to evaluate level coefficients.
+        eval_level_coeff (function): Function to evaluate kernel level coefficients.
         kmax (int): Search monomials up to order k
 
     Returns:
-        A tuple containing:
-        - fra_eigvals (np.ndarray): Array of fra eigenvalues.
+        - hea_eigvals (np.ndarray): Array of HEA eigenvalues.
         - monomials (list): List of generated monomials.
     """
     #implemented as num_monomials is occasionally gotten from a numpy array, so they're np.int's
@@ -61,40 +60,43 @@ def generate_fra_monomials(data_covar_eigvals, num_monomials, eval_level_coeff, 
     d = len(data_covar_eigvals)
 
     monomials = [Monomial({})]
-    fra_eigvals = [get_fra_eigval(data_covar_eigvals, monomials[0], eval_level_coeff)]
-    # Each entry in the priority queue is (-fra_eigval, Monomial({idx:exp, ...}))
-    pq = [(-get_fra_eigval(data_covar_eigvals, Monomial({0:1}), eval_level_coeff), Monomial({0:1}))]
+    hea_eigvals = [compute_hea_eigval(data_covar_eigvals, monomials[0], eval_level_coeff)]
+    # Each entry in the priority queue is (-hea_eigval, Monomial({idx:exp, ...}))
+    pq = [(-compute_hea_eigval(data_covar_eigvals, Monomial({0:1}), eval_level_coeff), Monomial({0:1}))]
     heapq.heapify(pq)
-    with trange(num_monomials-1, initial=1, desc="Generating monomials", unit="step", total=num_monomials) as pbar:
-        for _ in pbar:
-            if not pq:
-                return np.array(fra_eigvals), monomials
-            neg_fra_eigval, monomial = heapq.heappop(pq)
-            fra_eigvals.append(-neg_fra_eigval)
-            monomials.append(monomial)
+    # only show tqdm bar in console
+    for _ in tqdm(range(num_monomials-1), initial=1, desc="Generating monomials", disable=None):
+        if not pq:
+            return np.array(hea_eigvals), monomials
+        neg_hea_eigval, monomial = heapq.heappop(pq)
+        hea_eigvals.append(-neg_hea_eigval)
+        monomials.append(monomial)
 
-            last_idx = max(monomial.keys())
-            if last_idx + 1 < d:
-                left_monomial = monomial.copy()
-                left_monomial[last_idx] -= 1
-                if left_monomial[last_idx] == 0:
-                    del left_monomial[last_idx]
-                left_monomial[last_idx + 1] = left_monomial.get(last_idx + 1, 0) + 1
+        last_idx = max(monomial.keys())
+        if last_idx + 1 < d:
+            left_monomial = monomial.copy()
+            left_monomial[last_idx] -= 1
+            if left_monomial[last_idx] == 0:
+                del left_monomial[last_idx]
+            left_monomial[last_idx + 1] = left_monomial.get(last_idx + 1, 0) + 1
 
-                fra_eigval = get_fra_eigval(data_covar_eigvals, left_monomial, eval_level_coeff)
-                heapq.heappush(pq, (-fra_eigval, left_monomial))
+            hea_eigval = compute_hea_eigval(data_covar_eigvals, left_monomial, eval_level_coeff)
+            heapq.heappush(pq, (-hea_eigval, left_monomial))
 
-            if monomial.degree() < kmax:
-                right_monomial = monomial.copy()
+        if monomial.degree() < kmax:
+            right_monomial = monomial.copy()
+            right_monomial[last_idx] += 1
+            if eval_level_coeff(right_monomial.degree()) < 1e-12:
                 right_monomial[last_idx] += 1
-                if eval_level_coeff(right_monomial.degree()) < 1e-12:
-                    right_monomial[last_idx] += 1
-                if right_monomial.degree() > kmax:
-                    continue
-                fra_eigval = get_fra_eigval(data_covar_eigvals, right_monomial, eval_level_coeff)
-                heapq.heappush(pq, (-fra_eigval, right_monomial))
+            if right_monomial.degree() > kmax:
+                continue
+            hea_eigval = compute_hea_eigval(data_covar_eigvals, right_monomial, eval_level_coeff)
+            heapq.heappush(pq, (-hea_eigval, right_monomial))
 
-    return np.array(fra_eigvals), monomials
+    return np.array(hea_eigvals), monomials
+
+
+generate_fra_monomials = generate_hea_monomials
 
 
 def fra_terms_from_monomials(monomials, data_eigvals, eval_level_coeff):
@@ -111,7 +113,7 @@ def fra_terms_from_monomials(monomials, data_eigvals, eval_level_coeff):
     """
     fra_eigvals = np.zeros(len(monomials))
     for i, monomial in enumerate(monomials):
-        fra_eigvals[i] = get_fra_eigval(data_eigvals, monomial, eval_level_coeff)
+        fra_eigvals[i] = compute_hea_eigval(data_eigvals, monomial, eval_level_coeff)
     return fra_eigvals
 
 
