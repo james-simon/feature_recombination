@@ -5,6 +5,7 @@ __pycache__/
 .DS_Store
 .env
 venv/
+.venv/
 *.egg-info/
 build/
 dist/
@@ -13,4 +14,4 @@ dist/
 scratch.ipynb
 *DEPRECATED*
 .vscode/
-nohup.out
+nohup*.out
