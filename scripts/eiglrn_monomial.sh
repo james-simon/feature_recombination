@@ -1,9 +1,10 @@
-echo "Gaussian Kernel @ Gaussian data"
-python -u scripts/hehe_eigenlearning.py 1 monomials
-echo "Laplace Kernel @ Gaussian data"
-python -u scripts/hehe_eigenlearning.py 2 monomials
-echo "Gaussian Kernel @ CIFAR10"
-python -u scripts/hehe_eigenlearning.py 3 monomials
-echo "Laplace Kernel @ CIFAR10"
-python -u scripts/hehe_eigenlearning.py 4 monomials
-echo "All experiments completed."
+#!/bin/bash
+
+# Expt 1 "Gaussian Kernel @ Gaussian data"
+# Expt 2 "Laplace Kernel @ Gaussian data"
+# Expt 3 "Gaussian Kernel @ CIFAR10"
+# Expt 4 "Laplace Kernel @ CIFAR10"
+
+for i in {1..4}; do
+  CUDA_VISIBLE_DEVICES=$i nohup uv run python -u expts/hehe_eigenlearning.py $i monomials > "nohup$i.out" 2>&1 &
+done
