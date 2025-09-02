@@ -107,7 +107,7 @@ def get_v_true(H, offset, beta, **kwargs):
     return get_powerlaw(H.shape[1], beta/2, offset=offset, normalize=True)
 
 def get_synthetic_dataset(X=None, data_eigvals=None, d=500, N=15000, offset=3, alpha=1.5, cutoff_mode=10000,
-                          noise_size=0.1, yoffset=3, beta=1.2, normalized=True, **vargs):
+                          noise_size=0.1, yoffset=3, beta=1.2, normalized=True, **kwargs):
     """
     y_type: One of \"Gaussian\", \"Uniform\", \"Isotropic\", \"Binarized\", "\PowerLaw\", \"OneHot\", \"NHot\"
     noise_size: total noise size of the N-dim target vector y
@@ -115,9 +115,9 @@ def get_synthetic_dataset(X=None, data_eigvals=None, d=500, N=15000, offset=3, a
     if X is None:
         X, data_eigvals = get_synthetic_X(d=d, N=N, offset=offset, alpha=alpha)
 
-    kernel_width = vargs.get("kernel_width", 2)
-    kerneltype = vargs.get("kerneltype", None)
-    fra_eigvals, monomials = generate_fra_monomials(data_eigvals, cutoff_mode, kerneltype.get_level_coeff_fn(kernel_width=kernel_width, data_eigvals=data_eigvals), kmax=9)
+    kernel_width = kwargs.get("kernel_width", 2)
+    kerneltype = kwargs.get("kerneltype", None)
+    fra_eigvals, monomials = generate_fra_monomials(data_eigvals, cutoff_mode, kerneltype.get_level_coeff_fn(kernel_width=kernel_width, data_eigvals=data_eigvals), kmax=kwargs.get('kmax', 9))
     H = ensure_torch(get_matrix_hermites(X, monomials))
     fra_eigvals = ensure_torch(fra_eigvals)
     v_true = get_powerlaw(H.shape[1], beta/2, offset=yoffset, normalize=normalized)
