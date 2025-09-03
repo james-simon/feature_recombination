@@ -17,6 +17,11 @@ class Monomial(dict):
             return 0
         return sum(self.values())
 
+    def max_degree(self):
+        if len(self) == 0:
+            return 0
+        return max(self.values())
+
     def copy(self):
         return Monomial(super().copy())
 
