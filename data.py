@@ -65,6 +65,9 @@ def get_matrix_hermites(X, monomials, previously_normalized=False):
         20: lambda x: x**20 - 190*x**18 + 14250*x**16 - 513513*x**14 + 10210200*x**12 - 117117000*x**10 + 765765000*x**8 - 2677114440*x**6 + 4670678100*x**4 - 3101348250*x**2 + 654729075,
     }
 
+    if type(monomials) != list:
+        monomials = [monomials]
+        
     H = ensure_torch(torch.zeros((N, len(monomials))))
     for i, monomial in enumerate(monomials):
         h = ensure_torch(torch.ones(N) / np.sqrt(N))
