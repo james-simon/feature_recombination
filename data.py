@@ -14,22 +14,22 @@ def get_powerlaw(P, exp, offset=3, normalize=True):
         pl /= pl.sum()
     return pl
 
-def get_synthetic_X(d=500, N=15000, offset=3, alpha=1.5, data_eigvals = None, **kwargs):
+def get_synthetic_X(d=500, N=15000, offset=3, alpha=1.5, data_eigvals = None, gen=None, **kwargs):
     """
     Powerlaw synthetic data
     """
     data_eigvals = get_powerlaw(d, alpha, offset=3, normalize=True) if data_eigvals is None else data_eigvals
-    X = ensure_torch(torch.normal(0, 1, (N, d))) * torch.sqrt(data_eigvals)
+    X = ensure_torch(torch.normal(0, 1, (N, d), generator=gen)) * torch.sqrt(data_eigvals)
     return X, data_eigvals
 
-def get_online_synthetic_data(lambdas, Vt, monomials, dim, bsz, data_eigvals, N):
+def get_online_synthetic_data(lambdas, Vt, monomials, dim, bsz, data_eigvals, N, gen=None):
     """
     Used for experiments where the number of samples needed is greater than can be stored;
     primarily for training MLPs.
 
     Requires some global eigenfunctions to have already been defined
     """
-    X_new, _ = get_synthetic_X(d=dim, N=N, offset=None, alpha=None, data_eigvals=data_eigvals)
+    X_new, _ = get_synthetic_X(d=dim, N=N, offset=None, alpha=None, data_eigvals=data_eigvals, gen=gen)
     pca_x = X_new @ Vt.T @ torch.diag(lambdas**(-1.)) * N**(0.5)
     y_new = get_matrix_hermites(pca_x, monomials, previously_normalized=True)*bsz**(0.5)
     return X_new, y_new
@@ -67,7 +67,7 @@ def get_matrix_hermites(X, monomials, previously_normalized=False):
 
     if type(monomials) != list:
         monomials = [monomials]
-        
+
     H = ensure_torch(torch.zeros((N, len(monomials))))
     for i, monomial in enumerate(monomials):
         h = ensure_torch(torch.ones(N) / np.sqrt(N))
@@ -110,13 +110,12 @@ def get_v_true(H, offset, beta, **kwargs):
     return get_powerlaw(H.shape[1], beta/2, offset=offset, normalize=True)
 
 def get_synthetic_dataset(X=None, data_eigvals=None, d=500, N=15000, offset=3, alpha=1.5, cutoff_mode=10000,
-                          noise_size=0.1, yoffset=3, beta=1.2, normalized=True, **kwargs):
+                          noise_size=0.1, yoffset=3, beta=1.2, normalized=True, gen=None, **kwargs):
     """
-    y_type: One of \"Gaussian\", \"Uniform\", \"Isotropic\", \"Binarized\", "\PowerLaw\", \"OneHot\", \"NHot\"
     noise_size: total noise size of the N-dim target vector y
     """
     if X is None:
-        X, data_eigvals = get_synthetic_X(d=d, N=N, offset=offset, alpha=alpha)
+        X, data_eigvals = get_synthetic_X(d=d, N=N, offset=offset, alpha=alpha, gen=gen)
 
     kernel_width = kwargs.get("kernel_width", 2)
     kerneltype = kwargs.get("kerneltype", None)
@@ -125,5 +124,55 @@ def get_synthetic_dataset(X=None, data_eigvals=None, d=500, N=15000, offset=3, a
     fra_eigvals = ensure_torch(fra_eigvals)
     v_true = get_powerlaw(H.shape[1], beta/2, offset=yoffset, normalize=normalized)
     v_true = v_true if not normalized else v_true/torch.linalg.norm(v_true)* N**(0.5)
-    y = ensure_torch(H) @ v_true + ensure_torch(torch.normal(0., noise_size, (H.shape[0],)))#/H.shape[0]**(0.5)
-    return X, y, H, monomials, fra_eigvals, v_true
+    y = ensure_torch(H) @ v_true + ensure_torch(torch.normal(0., noise_size, (H.shape[0],), generator=gen))#/H.shape[0]**(0.5)
+    return X, y, H, monomials, fra_eigvals, v_true, data_eigvals
+
+
+def get_all_targets(target_monomials, monomials, H):
+    N = H.shape[0]
+    y_all = torch.zeros((N, len(target_monomials)))
+    locs = torch.zeros(len(target_monomials))
+
+    for i, monomial in enumerate(target_monomials):
+        loc = np.where(np.array(monomials) == monomial)[0][0]
+        locs[i] = loc
+        y_all[:, i] = H[:, loc]
+
+    return y_all, locs
+
+
+def get_new_monomial_data(lambdas, Vt, monomials, dim, N, data_eigvals, N_original, gen=None):
+    X_new, _ = get_synthetic_X(d=dim, N=N, offset=None, alpha=None, data_eigvals=data_eigvals, gen=gen)
+    pca_x = X_new @ Vt.T @ torch.diag(lambdas**(-1.)) * N_original**(0.5)
+    return X_new, get_matrix_hermites(pca_x, monomials, previously_normalized=True)*N**(0.5)
+
+
+def monomial_batch_fn(lambdas, Vt, monomial, dim, bsz, data_eigvals, N,
+                  X=None, y=None, device=None, gen=None):
+    if (X is not None) and (y is not None):
+        X_fixed = ensure_torch(X).to(device)
+        y_fixed = ensure_torch(y).to(device)
+        return lambda step: (X_fixed, y_fixed)
+
+    def batch_fn(step: int):
+        with torch.no_grad():
+            X, y = get_new_monomial_data(lambdas, Vt, monomial, dim, bsz, data_eigvals, N, gen=gen)
+        X, y = map(ensure_torch, (X, y))
+        return X, y
+
+    return batch_fn
+
+def powerlaw_batch_fn(H,source_exp,  X=None, y=None, device=None):
+    if (X is not None) and (y is not None):
+        X_fixed = ensure_torch(X).to(device)
+        y_fixed = ensure_torch(y).to(device)
+        return lambda step: (X_fixed, y_fixed)
+
+    def batch_fn(step: int): #not implemented yet
+        with torch.no_grad():
+            X = H
+            y = get_powerlaw_target(H, source_exp, offset=6, normalizeH=True, include_noise=False)
+        X, y = map(ensure_torch, (X, y))
+        return X, y
+
+    return batch_fn

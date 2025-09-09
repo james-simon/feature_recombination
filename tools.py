@@ -23,6 +23,16 @@ def get_standard_tools(X, kerneltype, kernel_width, top_mode_idx=3000, data_eigv
 
     return monomials, kernel, H, fra_eigvals, data_eigvals
 
+
+def get_log_log_linear_fit(x, y):
+    log_x = torch.log10(ensure_torch(x))
+    log_x_centered_w_intercept = torch.column_stack((log_x, torch.ones_like(log_x)))
+    sol = torch.linalg.lstsq(log_x_centered_w_intercept, torch.log10(y).unsqueeze(1)).solution.squeeze()
+    slope = float(sol[0])
+    intercept = float(sol[1])
+    return slope, intercept
+
+
 def get_test_mses(K, y, num_estimators=20, n_test=100, **kwargs):
     
     def get_ntrials(ntrain):
@@ -64,3 +74,15 @@ def find_beta(K, y, num_estimators=20, n_test=100, n_trials=20, **kwargs):
     beta = -slope+1
 
     return beta, intercept, sizes, test_mses
+
+def trial_count_fn(n):
+    # if n <= 10:
+    #     return 30
+    if n <= 50:
+        return 20
+    elif n <= 500:
+        return 10
+    elif n <= 5000:
+        return 3
+    else:
+        return 1
