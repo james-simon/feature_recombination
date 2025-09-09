@@ -85,7 +85,7 @@ def train_network(model, batch_function, lr=1e-2, max_iter=int(1e3), loss_checkp
             te_loss_val = tr_loss_val
         else:
             with torch.no_grad():
-                X_te, y_te = map(ensure_torch, (X_te, y_te))
+                # X_te, y_te = map(ensure_torch, (X_te, y_te))
                 out = model(X_te)
                 loss = loss_fn(out, y_te)
                 te_loss_val = float(loss.item())

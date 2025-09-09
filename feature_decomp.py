@@ -25,14 +25,22 @@ class Monomial(dict):
     def copy(self):
         return Monomial(super().copy())
 
-    def __repr__(self):
+    #refactored from __repr__ to also get __str__
+    def _latex_body(self):
         if self.degree() == 0:
             return "1"
         monostr = ""
         for idx, exp in self.items():
             expstr = f"^{exp}" if exp > 1 else ""
             monostr += f"x_{{{idx}}}{expstr}"
-        return f"${monostr}$"
+        return f"{monostr}"
+
+    def __str__(self) -> str:
+        body = self._latex_body()
+        return body.replace("{", "").replace("}", "")
+
+    def __repr__(self):
+        return f"${self._latex_body()}$"
 
 
 def get_fra_eigval(data_eigvals, monomial, eval_level_coeff):

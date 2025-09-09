@@ -148,18 +148,19 @@ def get_new_monomial_data(lambdas, Vt, monomials, dim, N, data_eigvals, N_origin
 
 
 def monomial_batch_fn(lambdas, Vt, monomial, dim, bsz, data_eigvals, N,
-                  X=None, y=None, device=None, gen=None):
+                  X=None, y=None, gen=None):
+    lambdas, Vt, data_eigvals = map(ensure_torch, (lambdas, Vt, data_eigvals))
     if (X is not None) and (y is not None):
-        X_fixed = ensure_torch(X).to(device)
-        y_fixed = ensure_torch(y).to(device)
+        X_fixed = ensure_torch(X)
+        y_fixed = ensure_torch(y)
         return lambda step: (X_fixed, y_fixed)
-
+    
     def batch_fn(step: int):
         with torch.no_grad():
             X, y = get_new_monomial_data(lambdas, Vt, monomial, dim, bsz, data_eigvals, N, gen=gen)
         X, y = map(ensure_torch, (X, y))
         return X, y
-
+    
     return batch_fn
 
 def powerlaw_batch_fn(H,source_exp,  X=None, y=None, device=None):
