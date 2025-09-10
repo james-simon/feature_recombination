@@ -19,7 +19,7 @@ from data import get_powerlaw, get_matrix_hermites, get_powerlaw_target
 from tools import grf
 
 
-EXPT_NAME = "hehe-eigenlearning"
+EXPT_NAME = "learning-curves"
 KERNEL_WIDTH = 10
 N_SAMPLES = 26_000
 P_MODES = 100_000
@@ -57,16 +57,17 @@ if len(sys.argv) > 2:
 if KERNEL_TYPE == GaussianKernel:
     RIDGE = 1e-3
     DATA_EIGVAL_EXP = 3.0   # d_eff = 7
-    ZCA_STRENGTH = 0        # d_eff = 7 cf10
+    ZCA_STRENGTH = 0        # d_eff = 7 gray cf10, 8 cf10
     if DATASET == "svhn":
-        ZCA_STRENGTH = 5e-3 # d_eff = 9
-    target_monomials = [{10:1}, {190:1}, {0:2}, {2:1, 3:1}, {15:1,20:1}, {0:3}]
+        ZCA_STRENGTH = 5e-3 # d_eff = 9 gray?
+    target_monomials = [{10:1}, {190:1}, {0:2}, {1:1, 3:1}, {20:1,30:1}, {0:3}]
     source_exps = [1.01, 1.1, 1.25, 1.5, 2.0]
 if KERNEL_TYPE == LaplaceKernel:
     RIDGE = 1e-3
     DATA_EIGVAL_EXP = 1.6   # d_eff = 27
-    ZCA_STRENGTH = 1e-2     # d_eff = 26 cf10
-    target_monomials = [{10:1}, {190:1}, {0:2}, {2:1, 3:1}, {20:1,30:1}, {0:3}, {1:2, 2:1}]
+    ZCA_STRENGTH = 5e-3     # d_eff = 37 cf10
+    # ZCA_STRENGTH = 1e-2     # d_eff = 26 gray cf10
+    target_monomials = [{10:1}, {190:1}, {0:2}, {1:1, 4:1}, {20:1,30:1}, {0:3}, {1:1, 3:1, 4:1}]
     source_exps = [1.01, 1.1, 1.25, 1.5, 2.0]
 
 hypers = dict(expt_name=EXPT_NAME, dataset=DATASET, kernel_name=KERNEL_TYPE.__name__,
@@ -136,7 +137,8 @@ if DATASET in ["cifar10", "imagenet32", "svhn"]:
         data = np.load(fn)
         X_raw = data['data'][:N_SAMPLES].astype(float)
         X_raw = rearrange(X_raw, 'n (c h w) -> n c h w', c=3, h=32, w=32)
-    X = preprocess(X_raw, center=True, grayscale=False, zca_strength=ZCA_STRENGTH)
+    # NOTE: grayscaled for monomials
+    X = preprocess(X_raw, center=True, zca_strength=ZCA_STRENGTH)
     X = ensure_torch(X)
     # ensure typical sample has unit norm
     S = torch.linalg.svdvals(X)
@@ -191,17 +193,21 @@ if TARGET in ["vehicle", "domesticated", "evenodd", "loops"]:
 
 print()
 
-et_grf = ExptTrace(["target", "quantity"])
+et_grf = {
+    "coeffs": ExptTrace(["target"]),
+    "residual": ExptTrace(["target"]),
+}
 for target, ystar in targets.items():
     ystar = ensure_torch(ystar)   
     ystar = ystar / torch.linalg.norm(ystar) 
     print(f"Solving GRF coeffs for target {target}...", end=" ")
-    grf_coeffs, uncaptured = map(ensure_numpy, grf(H, ystar, P_MODES))
-    et_grf[target, "coeffs"] = grf_coeffs
-    et_grf[target, "uncaptured"] = uncaptured
+    coeffs, residual = map(ensure_numpy, grf(H, ystar, P_MODES))
+    et_grf["coeffs"][target] = coeffs
+    et_grf["residual"][target] = residual
     print("done.")
 
-expt_fm.save(et_grf.serialize(), "grf.pickle")
+et_grf = {k: v.serialize() for k, v in et_grf.items()}
+expt_fm.save(et_grf, "grf.pickle")
 expt_fm.save(ensure_numpy(H), "H.npy")
 del H
 torch.cuda.empty_cache()
