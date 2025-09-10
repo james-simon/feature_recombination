@@ -102,11 +102,9 @@ def grf(H, y, P):
 
     H, y = ensure_torch(H), ensure_torch(y)
     vhat = ensure_torch(torch.zeros(P))
-    uncaptured = ensure_torch(torch.zeros(P))
     residual = y.clone()
     for t in range(P):
         phi_t = H[:, t]
         vhat[t] = torch.dot(phi_t, residual) / torch.linalg.norm(phi_t)**2
         residual -= vhat[t] * phi_t
-        uncaptured[t] = torch.linalg.norm(residual)**2
-    return ensure_numpy(vhat), ensure_numpy(uncaptured)
+    return ensure_numpy(vhat), ensure_numpy(residual)
