@@ -18,7 +18,7 @@ from data import get_powerlaw, get_matrix_hermites
 
 
 EXPT_NAME = "verify-hehe"
-KERNEL_WIDTH = 10
+KERNEL_WIDTH = 6
 N_SAMPLES = 25_000
 P_MODES = 25_000
 DATA_DIM = 200
@@ -48,7 +48,7 @@ if KERNEL_TYPE == GaussianKernel:
     ZCA_STRENGTH = 0        # d_eff = 7 cf10
 if KERNEL_TYPE == LaplaceKernel:
     DATA_EIGVAL_EXP = 1.6   # d_eff = 27
-    ZCA_STRENGTH = 1e-2     # d_eff = 26 cf10
+    ZCA_STRENGTH = 5e-3     # d_eff = 37 cf10
 
 hypers = dict(expt_name=EXPT_NAME, dataset=DATASET, kernel_name=KERNEL_TYPE.__name__,
               kernel_width=KERNEL_WIDTH, n_samples=N_SAMPLES, p_modes=P_MODES,
