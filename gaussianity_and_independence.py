@@ -2,7 +2,6 @@ import numpy as np
 from scipy.stats import norm
 import torch
 from utils import ensure_numpy, ensure_torch 
-from .independence_tests import independentize_data
 from tools import get_standard_tools
 
 def get_emperical_pdf(X, num_bins=100, tol=1e-3):
@@ -71,3 +70,23 @@ def full_analysis(X, kerneltype, kernel_width, top_fra_eigmode=3000):
     outdict["Independent"] = get_everything(X_independent, kerneltype, kernel_width, top_fra_eigmode)
     outdict["Gaussian Independent"] = get_everything(X_gaussian_independent, kerneltype, kernel_width, top_fra_eigmode)
     return outdict
+
+def eigvecs_to_independent(eigenvectors, bsz=None, rng = None, to_torch=True):
+    rng = np.random.default_rng() if rng is None else rng
+    n, dim = eigenvectors.shape #n = num datapoints
+    bsz = n if bsz is None else bsz
+    independent_components = torch.zeros((bsz, dim))
+
+    for i in range(bsz):
+        # For each column, randomly select one value from the n rows
+        random_rows = rng.integers(0, n, size=dim)
+        independent_components[i] = eigenvectors[random_rows, np.arange(dim)]
+
+    return ensure_torch(independent_components) if to_torch else independent_components
+
+def independentize_data(X, bsz=1, rng=None):
+    U, S, Vt = torch.linalg.svd(X, full_matrices=False)
+    eigenvectors = U @ torch.diag(S)
+
+    independent_data = eigvecs_to_independent(eigenvectors, bsz, rng)
+    return independent_data @ Vt

@@ -19,7 +19,7 @@ def get_synthetic_X(d=500, N=15000, offset=3, alpha=1.5, data_eigvals = None, ge
     Powerlaw synthetic data
     """
     data_eigvals = get_powerlaw(d, alpha, offset=3, normalize=True) if data_eigvals is None else data_eigvals
-    X = ensure_torch(torch.normal(0, 1, (N, d), generator=gen)) * torch.sqrt(data_eigvals)
+    X = ensure_torch(torch.normal(0, 1, (N, d), generator=gen, device=data_eigvals.device)) * torch.sqrt(data_eigvals)
     return X, data_eigvals
 
 def get_online_synthetic_data(lambdas, Vt, monomials, dim, bsz, data_eigvals, N, gen=None):
@@ -124,7 +124,7 @@ def get_synthetic_dataset(X=None, data_eigvals=None, d=500, N=15000, offset=3, a
     fra_eigvals = ensure_torch(fra_eigvals)
     v_true = get_powerlaw(H.shape[1], beta/2, offset=yoffset, normalize=normalized)
     v_true = v_true if not normalized else v_true/torch.linalg.norm(v_true)* N**(0.5)
-    y = ensure_torch(H) @ v_true + ensure_torch(torch.normal(0., noise_size, (H.shape[0],), generator=gen))#/H.shape[0]**(0.5)
+    y = ensure_torch(H) @ v_true + ensure_torch(torch.normal(0., noise_size, (H.shape[0],), generator=gen, device=H.device))#/H.shape[0]**(0.5)
     return X, y, H, monomials, fra_eigvals, v_true, data_eigvals
 
 
@@ -165,8 +165,8 @@ def monomial_batch_fn(lambdas, Vt, monomial, dim, bsz, data_eigvals, N,
 
 def powerlaw_batch_fn(H,source_exp,  X=None, y=None, device=None):
     if (X is not None) and (y is not None):
-        X_fixed = ensure_torch(X).to(device)
-        y_fixed = ensure_torch(y).to(device)
+        X_fixed = ensure_torch(X)
+        y_fixed = ensure_torch(y)
         return lambda step: (X_fixed, y_fixed)
 
     def batch_fn(step: int): #not implemented yet

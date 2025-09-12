@@ -36,8 +36,7 @@ class Monomial(dict):
         return f"{monostr}"
 
     def __str__(self) -> str:
-        body = self._latex_body()
-        return body.replace("{", "").replace("}", "")
+        return f"${self._latex_body()}$"
 
     def __repr__(self):
         return f"${self._latex_body()}$"

@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+import os
 
 
 def ensure_numpy(x, dtype=np.float64, clone=False):
@@ -43,3 +44,32 @@ def ensure_torch(x, dtype=torch.float32, device=None, clone=False):
         x = x.to(device=device, dtype=dtype, non_blocking=True)
 
     return x.clone() if clone else x
+
+
+## ---- seeding utils ----
+
+def derive_seed(master_seed, device_id=0):
+    """
+    Deterministic if master_seed is not None; otherwise uses OS entropy.
+    """
+    if master_seed is None:
+        # non-deterministic (different each run)
+        s = (os.getpid() ^ (device_id << 16)) & 0xFFFFFFFF
+        return int(s)
+
+    ss = np.random.SeedSequence([int(master_seed), int(device_id)])
+    return int(ss.generate_state(1, dtype=np.uint32)[0])
+
+def seed_everything(seed_int, device_id=0, make_generators=True, deterministic=False):
+    """
+    Set Python/NumPy/Torch (CPU & current CUDA device) RNGs.
+    Returns a torch.Generator() seeded the same way if requested.
+    """
+    np.random.seed(seed_int)
+    torch.manual_seed(seed_int)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed_int)  # current device
+    if deterministic:
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+    return (torch.Generator(device=f"cuda:{device_id}").manual_seed(seed_int), np.random.default_rng(seed_int)) if make_generators else None

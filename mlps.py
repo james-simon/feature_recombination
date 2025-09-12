@@ -36,7 +36,8 @@ class MLP(nn.Module):
 
 
 def train_network(model, batch_function, lr=1e-2, max_iter=int(1e3), loss_checkpoints=None, percent_thresholds=None,
-                  gamma=1., ema_smoother=0.0, X_tr=None, y_tr=None, X_te=None, y_te=None, stopper=None, **kwargs):
+                  gamma=1., ema_smoother=0.0, X_tr=None, y_tr=None, X_te=None, y_te=None, stopper=None, only_thresholds=False,
+                  **kwargs):
     """
     Returns:
         model, losses, timekeys
@@ -44,6 +45,7 @@ def train_network(model, batch_function, lr=1e-2, max_iter=int(1e3), loss_checkp
     - timekeys[j]: first gradient step where the loss drops below the j-th threshold.
     - If RELATIVE mode, thresholds are `percent_thresholds * init_loss`.
     - If ABSOLUTE mode, thresholds are raw absolutes and the comparison metric is raw loss.
+    - If only_thresholds is True, only returns the timekeys and not the full loss curves.
     """
     #checking if losses are absolute or relative
     has_abs = (loss_checkpoints is not None) and len(loss_checkpoints) > 0
@@ -63,10 +65,11 @@ def train_network(model, batch_function, lr=1e-2, max_iter=int(1e3), loss_checkp
     # thresholding
     thresholds = np.asarray(percent_thresholds if is_relative else loss_checkpoints, dtype=float)
     thresholds = np.sort(thresholds)[::-1] # descending
-    timekeys = np.full(thresholds.shape, max_iter, dtype=int)
+    timekeys = np.full(thresholds.shape, 0, dtype=int)
 
-    tr_losses = np.empty(max_iter, dtype=float)
-    te_losses = np.empty(max_iter, dtype=float)
+    if not(only_thresholds):
+        tr_losses = np.empty(max_iter, dtype=float)
+        te_losses = np.empty(max_iter, dtype=float)
     ema = None
     pointer = 0   
 
@@ -95,33 +98,41 @@ def train_network(model, batch_function, lr=1e-2, max_iter=int(1e3), loss_checkp
             ema_tr = tr_loss_val
             ema_te = te_loss_val
             if is_relative:
-                thresholds *= te_loss_val
+                thresholds *= tr_loss_val
             # prefill losses after init val calculated
-            tr_losses[:] = tr_loss_val
-            te_losses[:] = te_loss_val
+            if not(only_thresholds):
+                tr_losses[:] = tr_loss_val
+                te_losses[:] = te_loss_val
 
         ema_tr = (ema_smoother * ema_tr + (1.0 - ema_smoother) * tr_loss_val)
-        tr_losses[i] = ema_tr
         ema_te = (ema_smoother * ema_te + (1.0 - ema_smoother) * te_loss_val)
-        te_losses[i] = ema_te
+        if not(only_thresholds):
+            tr_losses[i] = ema_tr
+            te_losses[i] = ema_te
 
         if stopper is not None:
             stop, _ = stopper.update(i, te_loss_val)
-            if stop:
+            if stop and not only_thresholds:
                 tr_losses[i:] = tr_losses[i]
                 te_losses[i:] = te_losses[i]
                 return {"model": model, "train_losses": tr_losses, "test_losses": te_losses, "timekeys": timekeys}
-
-        while pointer < len(thresholds) and te_losses[i] < thresholds[pointer]:
+            elif stop:
+                return {"model": model, "train_losses": ema_tr, "test_losses": ema_te, "timekeys": timekeys}
+        while pointer < len(thresholds) and ema_tr < thresholds[pointer]:
             timekeys[pointer] = i
-            tr_losses[i:] = tr_losses[i]
-            te_losses[i:] = te_losses[i]
+            if not(only_thresholds):
+                tr_losses[i:] = tr_losses[i]
+                te_losses[i:] = te_losses[i]
             pointer += 1
 
         # early exit if all thresholds crossed
         if pointer == len(thresholds):
+            if only_thresholds:
+                return {"model": model, "train_losses": ema_tr, "test_losses": ema_te, "timekeys": timekeys}
             return {"model": model, "train_losses": tr_losses, "test_losses": te_losses, "timekeys": timekeys}
 
+    if only_thresholds:
+        return {"model": model, "train_losses": ema_tr, "test_losses": ema_te, "timekeys": timekeys}
     return {"model": model, "train_losses": tr_losses, "test_losses": te_losses, "timekeys": timekeys}
 
 
