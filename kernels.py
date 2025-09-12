@@ -254,54 +254,166 @@ class LaplaceKernel(Kernel):
         return obj
 
 
-# class ReluNNGPKernel(Kernel):
+class ReluNNGPKernel(Kernel):
 
-#     def __init__(self, X, **kwargs):
-#         super().__init__(X)
-#         norms = torch.linalg.norm(self.X, dim=-1, keepdim=True)
-#         K_norm = norms @ norms.T
-#         theta = torch.acos((self.X @ self.X.T / K_norm).clip(-1, 1))
-#         angular = torch.sin(theta) + (np.pi - theta)*torch.cos(theta)
-#         self.K = 1/(2*np.pi) * K_norm * angular
+    def __init__(self, X, **kwargs):
+        super().__init__(X)
+        w_var = kwargs.get("weight_variance", 1.0)
+        b_var = kwargs.get("bias_variance", 0.0)
+        self.w_var = w_var
+        self.b_var = b_var
 
-#     @staticmethod
-#     def get_level_coeff_fn(data_eigvals, **kwargs):
-#         q = data_eigvals.sum().item()
-#         numerator = {
-#             0: 1,
-#             1: np.pi / 2,
-#             2: 1,
-#             3: 0,
-#             4: 1,
-#             5: 0,
-#             6: 9,
-#             7: 0,
-#             8: 225,
-#             9: 0,
-#             10: 11025,
-#         }
+        norms = torch.linalg.norm(self.X, dim=-1, keepdim=True)
+        p = b_var + w_var * norms**2
+        normalizer = (p @ p.T).sqrt()
 
-#         def eval_level_coeff(ell):
-#             assert ell in numerator, f"level coeff {ell} not solved (sorry!)"
-#             f = numerator[ell] / q**ell
-#             return f * q / (2*np.pi)
-#         return eval_level_coeff
+        first_layer_nngp = ((w_var * self.X @ self.X.T) + b_var)
+        theta = torch.acos((first_layer_nngp / normalizer).clip(-1, 1))
+        self.K = (w_var * normalizer * (torch.sin(theta) + torch.cos(theta) * (np.pi - theta))) / (2*np.pi)
+
+    @staticmethod
+    def get_level_coeff_fn(data_eigvals, **kwargs):
+        w_var = kwargs.get("weight_variance", 1.0)
+        b_var = kwargs.get("bias_variance", 0.0)
+
+        q = b_var + w_var * data_eigvals.sum().item()
+        c0 = b_var / q
+        if abs(c0) >= 1.0:
+            raise ValueError("|c0|=1 makes higher derivatives singular; ensure w_var>0.")
+
+        pref = w_var * q / (2*np.pi)
+        scale = w_var / q
+        
+        def _poly_add(a, b, sa=1.0, sb=1.0):
+            n = max(len(a), len(b))
+            out = [0.0]*n
+            for i in range(n):
+                va = a[i] if i < len(a) else 0.0
+                vb = b[i] if i < len(b) else 0.0
+                out[i] = sa*va + sb*vb
+            return out
+
+        def _poly_eval(cs, c):
+            p = 0.0
+            for k in reversed(range(len(cs))):
+                p = p*c + cs[k]
+            return p
+
+        def eval_level_coeff(ell):
+            if ell == 0:
+                c = float(np.clip(c0, -1.0, 1.0))
+                Fk_at_c0 = np.sqrt(max(0.0, 1.0 - c**2)) + (np.pi - np.arccos(c))*c
+            elif ell == 1:
+                c = float(np.clip(c0, -1.0, 1.0))
+                Fk_at_c0 = np.pi - np.arccos(c)
+            elif ell == 2:
+                Fk_at_c0 = 1.0 / np.sqrt(1.0 - c0**2)
+            else:
+                Q = [1.0]
+                for cur_ell in range(2, ell):
+                    term1 = [k*Q[k] for k in range(1, len(Q))]
+                    term1 = _poly_add(term1, [0.0, 0.0] + term1, 1.0, -1.0)
+                    term2 = [0.0] + list(Q)
+                    Q = _poly_add(term1, term2, 1.0, (2*cur_ell - 3))
+                Fk_at_c0 = _poly_eval(Q, c0) / (1.0 - c0**2)**(ell - 1.5)
+            return pref * (scale**ell) * float(Fk_at_c0)
+
+        return eval_level_coeff
+    
+    def serialize(self):
+        data = super().serialize()
+        data["weight_variance"] = self.w_var
+        data["bias_variance"] = self.b_var
+        return data
+    
+    @classmethod
+    def deserialize(cls, data):
+        obj = super().deserialize(data)
+        obj.w_var = data["weight_variance"]
+        obj.b_var = data["bias_variance"]
+        return obj
 
 
-# class RandomFeatureKernel(Kernel):
+class ReluNTK(Kernel):
 
-#     def __init__(self, X, **kwargs):
-#         super().__init__(X)
-#         self.nonlinearity = kwargs["nonlinearity"]
-#         self.num_features = kwargs["num_features"]
-#         self.randomize_features(self.num_features)
+    def __init__(self, X, **kwargs):
+        super().__init__(X)
+        w_var = kwargs.get("weight_variance", 1.0)
+        b_var = kwargs.get("bias_variance", 0.0)
+        self.w_var = w_var
+        self.b_var = b_var
 
-#     def randomize_features(self, num_features=None):
-#         if num_features is None:
-#             num_features = self.num_features
-#         d = self.X.shape[1]
-#         W = ensure_torch(torch.normal(0, 1/np.sqrt(d), size=(d, num_features)))
-#         features = self.X @ W
-#         if self.nonlinearity:
-#             features = self.nonlinearity(features)
-#         self.set_K(features @ features.T)
+        norms = torch.linalg.norm(self.X, dim=-1, keepdim=True)
+        p = b_var + w_var * norms**2
+        normalizer = (p @ p.T).sqrt()
+
+        first_layer_nngp = (w_var * self.X @ self.X.T) + b_var
+        theta = torch.acos((first_layer_nngp / normalizer).clip(-1, 1))
+
+        second_layer_nngp = (w_var * normalizer * (torch.sin(theta) + torch.cos(theta) * (np.pi - theta))) / (2*np.pi)
+        second_layer_ntk = (w_var * first_layer_nngp * (np.pi - theta)) / (2*np.pi)
+        self.K = second_layer_nngp + second_layer_ntk
+        del normalizer, first_layer_nngp, theta, second_layer_nngp, second_layer_ntk
+
+    @staticmethod
+    def get_level_coeff_fn(data_eigvals, **kwargs):
+        w_var = kwargs.get("weight_variance", 1.0)
+        b_var = kwargs.get("bias_variance", 0.0)
+
+        q = b_var + w_var * data_eigvals.sum().item()
+        c0 = b_var / q
+        if abs(c0) >= 1.0:
+            raise ValueError("|c0|=1 makes higher derivatives singular; ensure w_var>0.")
+
+        pref = w_var * q / (2*np.pi)
+        scale = w_var / q
+        
+        def _poly_add(a, b, sa=1.0, sb=1.0):
+            n = max(len(a), len(b))
+            out = [0.0]*n
+            for i in range(n):
+                va = a[i] if i < len(a) else 0.0
+                vb = b[i] if i < len(b) else 0.0
+                out[i] = sa*va + sb*vb
+            return out
+
+        def _poly_eval(cs, c):
+            p = 0.0
+            for k in reversed(range(len(cs))):
+                p = p*c + cs[k]
+            return p
+
+        def eval_level_coeff(ell):
+            P = [3.0, 0.0, -2.0]
+            if ell == 0:
+                c = float(np.clip(c0, -1.0, 1.0))
+                Gk_at_c0 = np.sqrt(max(0.0, 1.0 - c**2)) + 2.0*(np.pi - np.arccos(c))*c
+            elif ell == 1:
+                c = float(np.clip(c0, -1.0, 1.0))
+                denom = np.sqrt(max(0.0, 1.0 - c**2))
+                Gk_at_c0 = 2.0*(np.pi - np.arccos(c)) + (c/denom if denom > 0 else float('inf'))
+            elif ell == 2:
+                Gk_at_c0 = _poly_eval(P, c0) / (1.0 - c0*c0)**1.5
+            else:
+                for cur_ell in range(2, ell):
+                    term1 = [k*P[k] for k in range(1, len(P))]
+                    term1 = _poly_add(term1, [0.0, 0.0] + term1, 1.0, -1.0)
+                    term2 = [0.0] + list(P)
+                    P = _poly_add(term1, term2, 1.0, (2*cur_ell - 1))
+                Gk_at_c0 = _poly_eval(P, c0) / (1.0 - c0*c0)**(ell - 0.5)
+            return pref * (scale**ell) * float(Gk_at_c0)
+        
+        return eval_level_coeff
+    
+    def serialize(self):
+        data = super().serialize()
+        data["weight_variance"] = self.w_var
+        data["bias_variance"] = self.b_var
+        return data
+    
+    @classmethod
+    def deserialize(cls, data):
+        obj = super().deserialize(data)
+        obj.w_var = data["weight_variance"]
+        obj.b_var = data["bias_variance"]
+        return obj
