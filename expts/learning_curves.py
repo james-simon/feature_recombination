@@ -57,7 +57,7 @@ if len(sys.argv) > 2:
 if KERNEL_TYPE == GaussianKernel:
     RIDGE = 1e-3
     DATA_EIGVAL_EXP = 3.0   # d_eff = 7
-    ZCA_STRENGTH = 0        # d_eff = 7 gray cf10, 8 cf10
+    ZCA_STRENGTH = 0        # d_eff = 7 gray cf10, 9 cf10
     if DATASET == "svhn":
         ZCA_STRENGTH = 5e-3 # d_eff = 9 gray?
     target_monomials = [{10:1}, {190:1}, {0:2}, {1:1, 3:1}, {20:1,30:1}, {0:3}]
@@ -137,7 +137,6 @@ if DATASET in ["cifar10", "imagenet32", "svhn"]:
         data = np.load(fn)
         X_raw = data['data'][:N_SAMPLES].astype(float)
         X_raw = rearrange(X_raw, 'n (c h w) -> n c h w', c=3, h=32, w=32)
-    # NOTE: grayscaled for monomials
     X = preprocess(X_raw, center=True, zca_strength=ZCA_STRENGTH)
     X = ensure_torch(X)
     # ensure typical sample has unit norm

@@ -109,7 +109,7 @@ if DATASET in ["cifar10", "imagenet32", "svhn"]:
         data = np.load(fn)
         X_raw = data['data'][:N_SAMPLES].astype(float)
         X_raw = rearrange(X_raw, 'n (c h w) -> n c h w', c=3, h=32, w=32)
-    X = preprocess(X_raw, center=True, grayscale=False, zca_strength=ZCA_STRENGTH)
+    X = preprocess(X_raw, center=True, zca_strength=ZCA_STRENGTH)
     X = ensure_torch(X)
     # ensure typical sample has unit norm
     S = torch.linalg.svdvals(X)
