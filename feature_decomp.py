@@ -41,6 +41,76 @@ class Monomial(dict):
     def __repr__(self):
         return f"${self._latex_body()}$"
 
+    @classmethod
+    def from_repr(cls, s: str) -> "Monomial":
+        """
+        Parse strings like '$x_{0}^2x_{3}x_{10}^5$' or '$1$' into a Monomial.
+        No regex used. Strict about format produced by __repr__/__str__.
+        """
+        if not isinstance(s, str):
+            raise TypeError("from_repr expects a string")
+
+        s = s.strip()
+        if s.startswith("$") and s.endswith("$"):
+            s = s[1:-1]
+        s = s.replace(" ", "")
+
+        if s in {"", "1"}:
+            return cls()
+
+        i, n = 0, len(s)
+        out = {}
+
+        def expect(ch: str):
+            nonlocal i
+            if i >= n or s[i] != ch:
+                raise ValueError(f"Expected '{ch}' at pos {i} in {s!r}")
+            i += 1
+
+        def read_digits() -> int:
+            nonlocal i
+            start = i
+            while i < n and s[i].isdigit():
+                i += 1
+            if start == i:
+                raise ValueError(f"Expected digits at pos {start} in {s!r}")
+            return int(s[start:i])
+
+        while i < n:
+            # x_{idx}
+            expect('x')
+            expect('_')
+            expect('{')
+            idx = read_digits()
+            expect('}')
+
+            # optional ^exp
+            exp = 1
+            if i < n and s[i] == '^':
+                i += 1
+                exp = read_digits()
+
+            out[idx] = out.get(idx, 0) + exp
+
+        return cls(out)
+    
+    def basis_list(self, include_one: bool = False, canonical: bool = True):
+        """
+        Return a list of unit-degree Monomials whose product equals this monomial.
+        Example: Monomial({0: 2, 3: 1}) -> [Monomial({0:1}), Monomial({0:1}), Monomial({3:1})]
+        If degree == 0, returns [] unless include_one=True (then [Monomial({})]).
+        If canonical=True, factors are ordered by increasing variable index.
+        """
+        if self.degree() == 0:
+            return [Monomial({})] if include_one else []
+
+        items = sorted(self.items()) if canonical else self.items()
+        factors = []
+        for idx, exp in items:
+            for _ in range(int(exp)):
+                factors.append(Monomial({idx: 1}))
+        return factors
+
 
 def get_fra_eigval(data_eigvals, monomial, eval_level_coeff):
     fra_eigval = eval_level_coeff(monomial.degree())

@@ -18,7 +18,7 @@ def get_synthetic_X(d=500, N=15000, offset=3, alpha=1.5, data_eigvals = None, ge
     """
     Powerlaw synthetic data
     """
-    data_eigvals = get_powerlaw(d, alpha, offset=3, normalize=True) if data_eigvals is None else data_eigvals
+    data_eigvals = get_powerlaw(d, alpha, offset=offset, normalize=True) if data_eigvals is None else data_eigvals
     X = ensure_torch(torch.normal(0, 1, (N, d), generator=gen, device=data_eigvals.device)) * torch.sqrt(data_eigvals)
     return X, data_eigvals
 

@@ -52,6 +52,7 @@ EMA_SMOOTHER = 0.9
 DETERMINSITIC = True
 trial_counts = np.array([trial_count_fn(n) for n in NS], dtype=int)
 max_trials   = int(trial_counts.max())
+ONLINE = False
 
 global_config = dict(DEPTH=DEPTH, WIDTH=WIDTH, LR=LR, GAMMA=GAMMA,
     EMA_SMOOTHER=EMA_SMOOTHER, MAX_ITER=MAX_ITER,
@@ -104,7 +105,8 @@ def run_job(device_id, job, global_config, bfn_config=None):
     target, n, trial = job
     X_te, y_te = batch_function(target, global_config["N_TEST"], X=None, y=None)(0)
     
-    X_tr, y_tr = batch_function(target, n, X=None, y=None)(trial)
+    X_tr, y_tr = batch_function(target, n, X=None, y=None)(trial) if not ONLINE else None, None
+    
     bfn = batch_function(target, n, X=X_tr, y=y_tr)
     
     model = MLP(d_in=global_config["DIM"], depth=global_config["DEPTH"],
@@ -159,7 +161,6 @@ def main():
                                                                                            gen=torch.Generator(device='cuda').manual_seed(SEED))
 
     elif DATASET == "cifar10":
-        #todo: get monomials
         from imdata import ImageData
         PIXEL_NORMALIZED =  False
         classes = datasethps['classes']
@@ -176,10 +177,14 @@ def main():
         X_train, y_train, X_test, y_test = map(ensure_torch, (X_train, y_train, X_test, y_test))
         y_train = y_train.squeeze()
         y_test = y_test.squeeze()
+        X_train, y_train, X_test, y_test = [t/torch.linalg.norm(t) for t in (X_train, y_train, X_test, y_test)] if normalized else (X_train, y_train, X_test, y_test)
+        if normalized:
+            X_train *= N_TRAIN**(0.5); X_test *= N_TEST**(0.5)
+            y_train *= N_TRAIN**(0.5); y_test *= N_TEST**(0.5)
         X_full = torch.cat((X_train, X_test), dim=0)
         y_full = torch.cat((y_train, y_test), dim=0)
-        X_train, y_train, X_test, y_test = [t/torch.linalg.norm(t) for t in (X_train, y_train, X_test, y_test)] if normalized else (X_train, y_train, X_test, y_test)
         data_eigvals = torch.linalg.svdvals(X_full)**2
+        data_eigvals /= data_eigvals.sum()
 
 
     U, lambdas, Vt = torch.linalg.svd(X_full, full_matrices=False)
