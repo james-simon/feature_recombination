@@ -3,25 +3,18 @@ import torch as torch
 import math
 from scipy.special import zeta
 
-from utils import ensure_torch
+from utils import ensure_numpy, ensure_torch
 
 
 def get_powerlaw(P, exp, offset=3, normalize=True):
-    pl = ensure_torch((offset+np.arange(P)) ** -exp)
+    pl = (offset+np.arange(P)) ** -exp
     if normalize:
         pl /= pl.sum()
     return pl
 
 
-def get_matrix_hermites(X, monomials, previously_normalized=False):
-    N, _ = X.shape
-    if not previously_normalized:
-        U, _, _ = torch.linalg.svd(X, full_matrices=False)
-        X_norm = np.sqrt(N) * U
-    else:
-        X_norm = X
-
-    hermites = {
+def get_hermite_polynomials():
+    return {
         1: lambda x: x,
         2: lambda x: x**2 - 1,
         3: lambda x: x**3 - 3*x,
@@ -44,9 +37,19 @@ def get_matrix_hermites(X, monomials, previously_normalized=False):
         20: lambda x: x**20 - 190*x**18 + 14250*x**16 - 513513*x**14 + 10210200*x**12 - 117117000*x**10 + 765765000*x**8 - 2677114440*x**6 + 4670678100*x**4 - 3101348250*x**2 + 654729075,
     }
 
-    H = ensure_torch(torch.zeros((N, len(monomials))))
+
+def get_matrix_hermites(X, monomials, previously_normalized=False):
+    N, _ = X.shape
+    if not previously_normalized:
+        U, _, _ = torch.linalg.svd(X, full_matrices=False)
+        X_norm = ensure_numpy(np.sqrt(N) * U)
+    else:
+        X_norm = ensure_numpy(X)
+    
+    hermites = get_hermite_polynomials()
+    H = np.zeros((N, len(monomials)))
     for i, monomial in enumerate(monomials):
-        h = ensure_torch(torch.ones(N) / np.sqrt(N))
+        h = np.ones(N) / np.sqrt(N)
         for d_i, exp in monomial.items():
             Z = np.sqrt(math.factorial(exp))
             h *= hermites[exp](X_norm[:, d_i]) / Z
@@ -54,27 +57,36 @@ def get_matrix_hermites(X, monomials, previously_normalized=False):
     return H
 
 
-def get_powerlaw_target(H, source_exp, offset=6, normalizeH=True, include_noise=False):
+def get_powerlaw_target(H, source_exp, offset=6, normalizeH=False, include_noise=False):
     if source_exp <= 1:
         raise ValueError("source_exp must be > 1 for powerlaw target")
     if offset < 1:
         raise ValueError("offset ≥ 1required")
-    N, P = H.shape
+    M, P = H.shape
     if normalizeH:
-        H /= torch.linalg.norm(H, dim=0, keepdim=True)
+        H = H / np.linalg.norm(H, axis=0, keepdims=True)
     squared_coeffs = get_powerlaw(P, source_exp, offset=offset)
     # Generate random signs for coefficients
-    signs = -1 + 2*ensure_torch(torch.randint(0, 2, size=squared_coeffs.shape))
-    coeffs = torch.sqrt(squared_coeffs) * signs.float()
-    y = H @ coeffs
+    signs = -1 + 2*np.random.randint(0, 2, size=squared_coeffs.shape)
+    coeffs = np.sqrt(squared_coeffs) * signs.astype(float)
+    coeffs = ensure_torch(coeffs)
+    # y = H @ coeffs
+    chunk_size = 1_000
+    y = ensure_torch(np.zeros(M))
+    for start in range(0, P, chunk_size):
+        end = min(start + chunk_size, P)
+        H_chunk = ensure_torch(H[:, start:end])
+        y += H_chunk @ coeffs[start:end]
+        del H_chunk
+        torch.cuda.empty_cache()
     if include_noise:
         totalsum = zeta(source_exp, offset)  # sum_{k=offset  }^infty k^{-exp}
         tailsum = zeta(source_exp, offset+P) # sum_{k=offset+P}^infty k^{-exp}
         noise_var = tailsum/(totalsum - tailsum)
-        noise = torch.normal(0, np.sqrt(noise_var / N), y.shape)
+        noise = np.random.normal(0, np.sqrt(noise_var / M), y.shape)
         # snr = y @ y / (noise @ noise)
         y /= torch.linalg.norm(y)
         y += ensure_torch(noise)
     # we expect size(y_i) ~ 1
-    y = np.sqrt(N) * y / torch.linalg.norm(y)
-    return y
+    y = np.sqrt(M) * y / torch.linalg.norm(y)
+    return ensure_numpy(y)
