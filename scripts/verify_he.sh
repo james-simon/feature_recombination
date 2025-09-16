@@ -1,12 +1,5 @@
 #!/bin/bash
 
-# Expt 1 "Gaussian Kernel @ synthetic"
-# Expt 2 "Laplace Kernel @ synthetic"
-# Expt 3 "Gaussian Kernel @ CIFAR10"
-# Expt 4 "Laplace Kernel @ CIFAR10"
-# Expt 5 "Gaussian Kernel @ ImageNet"
-# Expt 6 "Laplace Kernel @ ImageNet"
-
-for i in {1..6}; do
+for i in {1..4}; do
   CUDA_VISIBLE_DEVICES=$i nohup uv run python -u expts/hermite_eigenstructure.py $i > "nohup$i.out" 2>&1 &
 done
