@@ -76,7 +76,7 @@ def generate_hea_monomials(data_eigvals, num_monomials, eval_level_coeff, kmax=1
     
     monomials = [Monomial({})]
     hea_eigvals = [first_hea_eigval]
-    for _ in range(num_monomials):
+    for _ in range(num_monomials-1):
         if not pq:
             print("Warning: priority queue exhausted before reaching num_monomials.")
             return np.array(hea_eigvals), monomials
