@@ -23,7 +23,7 @@ KERNEL_WIDTH = 10
 N_SAMPLES = 26_000
 P_MODES = 100_000
 DATA_DIM = 200
-NUM__MARKERS = 20
+NUM_MARKERS = 20
 
 # Defaults
 DATASET = "gaussian"
@@ -129,9 +129,11 @@ hehe_eigvals, monomials = generate_hea_monomials(data_eigvals, P_MODES, eval_lev
 H = get_matrix_hermites(X, monomials)
 print("done.")
 
-target_monomials = [{0:1}, {100:1}, {0:2}, {0:1,1:1}, {16:1,20:1},
-                    {0:3}, {0:1, 1:1, 2:1}, {3:2, 5:1},
+target_monomials = [{0:1}, {10:1}, {100:1}, {190:1},
+                    {0:2}, {0:1,1:1}, {1:1, 3:1}, {16:1,20:1}, {20:1,30:1},
+                    {0:3}, {0:1, 1:1, 2:1}, {1:1, 3:1, 4:1}, {3:2, 5:1},
                     {0:4}]
+# laplace monomials [{10:1}, {190:1}, {0:2}, {1:1, 4:1}, {20:1,30:1}, {0:3}, {1:1, 3:1, 4:1}]
 monomial_idxs = set()
 for tmon in target_monomials:
     try:
@@ -146,7 +148,7 @@ masked_eigvals = np.ma.masked_all((num_degrees, len(hehe_eigvals)))
 for idx, monomial in enumerate(monomials):
     if 1 <= monomial.degree() <= 4:
         masked_eigvals[monomial.degree()-1, idx] = hehe_eigvals[idx]
-markers = np.logspace(np.log10(hehe_eigvals[-10_000]), np.log10(hehe_eigvals[0]), NUM__MARKERS)
+markers = np.logspace(np.log10(hehe_eigvals[-10_000]), np.log10(hehe_eigvals[0]), NUM_MARKERS)
 for i, marker in enumerate(markers):
     degree = i%4 + 1
     idx = int(np.argmin(np.abs(masked_eigvals[degree-1] - marker)))
