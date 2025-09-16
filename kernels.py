@@ -4,10 +4,14 @@ from math import factorial
 from utils import ensure_torch, ensure_numpy
 
 
-def krr(K, y, n_train, n_test, ridge=0):
+def krr(K, y, n_train, n_test, ridge=0, trial=None):
     n_tot = K.shape[0]
     assert n_train + n_test <= n_tot
-    train_slc = torch.randperm(n_tot - n_test)[:n_train]
+    if trial is not None:
+        train_slc = torch.arange(n_train) + trial * n_train
+        train_slc = train_slc % (n_tot - n_test)
+    else:
+        train_slc = torch.randperm(n_tot - n_test)[:n_train]
     test_slc = torch.arange(n_tot - n_test, n_tot)
     slc = torch.cat([train_slc, test_slc])
     K = K[slc[:, None], slc[None, :]]
@@ -258,8 +262,7 @@ class ReluNNGPKernel(Kernel):
 
     def __init__(self, X, **kwargs):
         super().__init__(X)
-        w_var = kwargs.get("weight_variance", 1.0)
-        b_var = kwargs.get("bias_variance", 0.0)
+        w_var, b_var = ReluNNGPKernel.parse_kwargs(kwargs)
         self.w_var = w_var
         self.b_var = b_var
 
@@ -272,11 +275,22 @@ class ReluNNGPKernel(Kernel):
         self.K = (w_var * normalizer * (torch.sin(theta) + torch.cos(theta) * (np.pi - theta))) / (2*np.pi)
 
     @staticmethod
+    def parse_kwargs(kwargs):
+        if "weight_variance" in kwargs and "bias_variance" in kwargs:
+            w_var = kwargs["weight_variance"]
+            b_var = kwargs["bias_variance"]
+        else:
+            k_width = kwargs.get("kernel_width", 1.0)
+            w_var = np.sqrt((2*np.pi)/(1 + 2*np.pi*k_width))
+            b_var = k_width * w_var
+        return w_var, b_var
+    
+    @staticmethod
     def get_level_coeff_fn(data_eigvals, **kwargs):
-        w_var = kwargs.get("weight_variance", 1.0)
-        b_var = kwargs.get("bias_variance", 0.0)
+        w_var, b_var = ReluNNGPKernel.parse_kwargs(kwargs)
 
-        q = b_var + w_var * data_eigvals.sum().item()
+        rho = ensure_numpy(data_eigvals).sum()
+        q = b_var + w_var * rho
         c0 = b_var / q
         if abs(c0) >= 1.0:
             raise ValueError("|c0|=1 makes higher derivatives singular; ensure w_var>0.")
@@ -322,15 +336,15 @@ class ReluNNGPKernel(Kernel):
     
     def serialize(self):
         data = super().serialize()
-        data["weight_variance"] = self.w_var
-        data["bias_variance"] = self.b_var
+        data["w_var"] = self.w_var
+        data["b_var"] = self.b_var
         return data
     
     @classmethod
     def deserialize(cls, data):
         obj = super().deserialize(data)
-        obj.w_var = data["weight_variance"]
-        obj.b_var = data["bias_variance"]
+        obj.w_var = data["w_var"]
+        obj.b_var = data["b_var"]
         return obj
 
 
@@ -338,8 +352,7 @@ class ReluNTK(Kernel):
 
     def __init__(self, X, **kwargs):
         super().__init__(X)
-        w_var = kwargs.get("weight_variance", 1.0)
-        b_var = kwargs.get("bias_variance", 0.0)
+        w_var, b_var = ReluNTK.parse_kwargs(kwargs)
         self.w_var = w_var
         self.b_var = b_var
 
@@ -356,11 +369,22 @@ class ReluNTK(Kernel):
         del normalizer, first_layer_nngp, theta, second_layer_nngp, second_layer_ntk
 
     @staticmethod
-    def get_level_coeff_fn(data_eigvals, **kwargs):
-        w_var = kwargs.get("weight_variance", 1.0)
-        b_var = kwargs.get("bias_variance", 0.0)
+    def parse_kwargs(kwargs):
+        if "weight_variance" in kwargs and "bias_variance" in kwargs:
+            w_var = kwargs["weight_variance"]
+            b_var = kwargs["bias_variance"]
+        else:
+            k_width = kwargs.get("kernel_width", 1.0)
+            w_var = np.sqrt((2*np.pi)/(1 + 2*np.pi*k_width))
+            b_var = k_width * w_var
+        return w_var, b_var
 
-        q = b_var + w_var * data_eigvals.sum().item()
+    @staticmethod
+    def get_level_coeff_fn(data_eigvals, **kwargs):
+        w_var, b_var = ReluNTK.parse_kwargs(kwargs)
+
+        rho = ensure_numpy(data_eigvals).sum()
+        q = b_var + w_var * rho
         c0 = b_var / q
         if abs(c0) >= 1.0:
             raise ValueError("|c0|=1 makes higher derivatives singular; ensure w_var>0.")
@@ -407,13 +431,13 @@ class ReluNTK(Kernel):
     
     def serialize(self):
         data = super().serialize()
-        data["weight_variance"] = self.w_var
-        data["bias_variance"] = self.b_var
+        data["w_var"] = self.w_var
+        data["b_var"] = self.b_var
         return data
     
     @classmethod
     def deserialize(cls, data):
         obj = super().deserialize(data)
-        obj.w_var = data["weight_variance"]
-        obj.b_var = data["bias_variance"]
+        obj.w_var = data["w_var"]
+        obj.b_var = data["b_var"]
         return obj
