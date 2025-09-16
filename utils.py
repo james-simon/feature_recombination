@@ -45,6 +45,35 @@ def ensure_torch(x, dtype=torch.float32, device=None, clone=False):
 
     return x.clone() if clone else x
 
+def tuple_to_numpy(x, dtype=np.float64, clone=False):
+    """Recursively convert array-like leaves to NumPy via ensure_numpy.
+    Preserves lists/tuples/dicts (namedtuples keep their type).
+    Sets become tuples to avoid unhashable ndarrays.
+    Leaves scalars/strings/None unchanged.
+    """
+    # simple leaves
+    if x is None or isinstance(x, (str, bytes, bytearray)):
+        return x
+    if np.isscalar(x):
+        return x
+
+    # containers
+    if isinstance(x, dict):
+        return {k: tuple_to_numpy(v, dtype=dtype, clone=clone) for k, v in x.items()}
+    if isinstance(x, tuple) and hasattr(x, "_fields"):  # namedtuple
+        return type(x)(*(tuple_to_numpy(v, dtype=dtype, clone=clone) for v in x))
+    if isinstance(x, tuple):
+        return tuple(tuple_to_numpy(v, dtype=dtype, clone=clone) for v in x)
+    if isinstance(x, list):
+        return [tuple_to_numpy(v, dtype=dtype, clone=clone) for v in x]
+    if isinstance(x, set):
+        return tuple(tuple_to_numpy(v, dtype=dtype, clone=clone) for v in x)
+
+    try:
+        return ensure_numpy(x, dtype=dtype, clone=clone)
+    except Exception:
+        return x
+
 
 ## ---- seeding utils ----
 

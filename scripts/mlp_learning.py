@@ -15,15 +15,12 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 from kernels import GaussianKernel
 from feature_decomp import Monomial
-from utils import ensure_torch, derive_seed, seed_everything
+from utils import ensure_torch, derive_seed, seed_everything, tuple_to_numpy
 from mlps import MLP, train_network
 from tools import trial_count_fn
 
 from ExptTrace import ExptTrace
 from FileManager import FileManager
-
-colors = ['xkcd:red', 'xkcd:orange', 'xkcd:gold', 'xkcd:green', 'xkcd:blue', "xkcd:purple", "xkcd:black"]
-markers = ['x', 's', 'o', '^', 'D', '*', 'v', 'p', 'h']
 
 ## --- Experiment parameters ---
 
@@ -53,6 +50,8 @@ DETERMINSITIC = True
 trial_counts = np.array([trial_count_fn(n) for n in NS], dtype=int)
 max_trials   = int(trial_counts.max())
 ONLINE = False
+if ONLINE:
+    trial_counts = np.ones_like(NS)*2
 
 global_config = dict(DEPTH=DEPTH, WIDTH=WIDTH, LR=LR, GAMMA=GAMMA,
     EMA_SMOOTHER=EMA_SMOOTHER, MAX_ITER=MAX_ITER,
@@ -72,6 +71,7 @@ datasethps = {"normalized": True,
               "beta": 1.2,
               "classes": None,
               "binarize": False}
+
 
 
 ## ----- Technicals below -----
@@ -125,6 +125,7 @@ def run_job(device_id, job, global_config, bfn_config=None):
         X_te=X_te, y_te=y_te,
     )
 
+    timekeys = outdict["timekeys"]
     train_losses = outdict["train_losses"]
     test_losses = outdict["test_losses"]
 
@@ -133,8 +134,7 @@ def run_job(device_id, job, global_config, bfn_config=None):
     torch.cuda.empty_cache()
     gc.collect()
 
-    return (n, str(target), int(trial), train_losses, test_losses)
-
+    return (n, str(target), int(trial), train_losses, test_losses, timekeys) #timekeys is numpy
 
 def worker(device_id, job_queue, result_queue, global_config, bfn_config):
     torch.cuda.set_device(device_id)
@@ -144,12 +144,13 @@ def worker(device_id, job_queue, result_queue, global_config, bfn_config):
         if job is None:
             break
         try:
-            key_n, key_t, key_trial, train_losses, test_losses = run_job(device_id, job, global_config, bfn_config)
-            result_queue.put(("ok", (key_n, key_t, key_trial,
-                                     torch.as_tensor(train_losses).cpu().numpy(),
-                                     torch.as_tensor(test_losses).cpu().numpy())))
+            payload = run_job(device_id, job, global_config, bfn_config)
+            payload = tuple_to_numpy(payload)
+
+            result_queue.put(("ok", payload))
         except Exception as e:
             result_queue.put(("err", (job, repr(e))))
+
 
 ## --- Multiprocessing execution ---
 def main():
@@ -193,7 +194,8 @@ def main():
     ## --- Target function defs ---
     if TARGET_FUNCTION_TYPE == "monomial":
         target_monomials = [Monomial({10: 1}), Monomial({190:1}), Monomial({0:2}), Monomial({2:1, 3:1}), Monomial({15:1, 20:1}), Monomial({0:3}),] #Monomial({1:1, 3:1, 4:1})]
-        
+        if ONLINE:
+            target_monomials = monomials[:1000]
         total_iters = int(len(target_monomials) * trial_counts.sum())
 
         targets = target_monomials
@@ -224,6 +226,8 @@ def main():
 
     var_axes = ["target", "ntrain", "trial"]
     et_losses = ExptTrace(var_axes)
+    et_timekeys = ExptTrace(var_axes)
+
     jobs = [(target, n, trial)
             for target in targets
             for nidx, n in enumerate(NS)
@@ -250,13 +254,14 @@ def main():
         while done < total:
             kind, payload = result_queue.get()
             if kind == "ok":
-                n, tstr, trial, train_losses, test_losses = payload
-                et_losses[n, tstr, trial] = test_losses
+                n, tstr, trial, train_losses, test_losses, timekeys = payload
+                et_losses[tstr, n, trial] = test_losses
+                et_timekeys[tstr, n, trial] = timekeys
                 if not(ONLYTHRESHOLDS):
                     train_losses = train_losses[-1]
                     test_losses = test_losses[-1]
                 pbar.set_postfix_str(
-                f"train {train_losses:.3g} | test {test_losses:.3g} | n={n} | target={tstr} | trial={trial}",
+                f"train {train_losses:.3g} | test {test_losses:.3g} | timekey {timekeys} | n={n} | target={tstr} | trial={trial}",
                 refresh=False
             )
             else:
@@ -272,7 +277,8 @@ def main():
         "monomials": monomials,
         "fra_eigvals": fra_eigvals.cpu(),
         "locs": locs.cpu(),
-        "losses": et_losses.serialize()
+        "losses": et_losses.serialize(),
+        "timekeys": et_timekeys.serialize(),
     }
 
     expt_fm.save(result, "result.pickle")
