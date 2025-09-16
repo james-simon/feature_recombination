@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from tqdm import tqdm, trange
+from tqdm import tqdm
 
 from ExptTrace import ExptTrace
 
@@ -95,16 +95,23 @@ def estimate_beta(K, y, n_trains, n_test=5_000, n_tailstart=800):
     return beta, coeff, mse_trials
 
 
-def grf(H, y, P):
-    if P is None:
-        P = H.shape[1]
-    assert P <= H.shape[1], "P must not exceed num modes"
-
-    H, y = ensure_torch(H), ensure_torch(y)
-    vhat = ensure_torch(torch.zeros(P))
-    residual = y.clone()
-    for t in range(P):
-        phi_t = H[:, t]
-        vhat[t] = torch.dot(phi_t, residual) / torch.linalg.norm(phi_t)**2
-        residual -= vhat[t] * phi_t
-    return ensure_numpy(vhat), ensure_numpy(residual)
+def grf(H, y, chunk_size=1_000, idxs=None):
+    _, P = H.shape
+    if idxs is None:
+        idxs = np.arange(P)
+    vhat = ensure_torch(np.zeros(P))
+    H_norm = ensure_torch(np.zeros(P))
+    residual = ensure_torch(y, clone=True)
+    for start in range(0, P, chunk_size):
+        end = min(start + chunk_size, P)
+        idx_chunk = idxs[start:end]
+        H_chunk = ensure_torch(H[:, idx_chunk])
+        H_norm[idx_chunk] = torch.linalg.norm(H_chunk, axis=0)
+        for i, t in enumerate(idx_chunk):
+            phi_t = H_chunk[:, i]
+            vhat[t] = torch.dot(phi_t, residual) / H_norm[t]**2
+            residual -= vhat[t] * phi_t
+        del H_chunk
+        torch.cuda.empty_cache()
+    vhat, residual, H_norm = map(ensure_numpy, (vhat, residual, H_norm))
+    return vhat, residual, H_norm
