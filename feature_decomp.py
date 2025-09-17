@@ -199,3 +199,69 @@ def fra_terms_from_monomials(monomials, data_eigvals, eval_level_coeff):
 
 def lookup_monomial_idx(monomials, monomial):
     return next((i for i, m in enumerate(monomials) if m == monomial), None)
+
+def group_by_deg_max(monomials):
+    """Return dict[(degree, max_degree)] -> list of (idx, monomial)."""
+    groups = {}
+    for i, m in enumerate(monomials):
+        key = (m.degree(), m.max_degree())
+        if key not in groups:
+            groups[key] = []
+        groups[key].append((i, m))
+    return groups
+
+def stratified_sample_monomials(monomials, n, m=0, return_indices=False, np_rng=None, torch_gen=None):
+    """
+    Sample per (degree, max_degree) stratum:
+      - deterministically include first m,
+      - randomly sample (n-m) from the remainder without replacement.
+
+    Args:
+        n: total to return per stratum
+        m: number of first-in-order items to force-include per stratum
+        return_indices: if True, return original indices instead of objects
+        np_rng: optional numpy Generator (e.g., np.random.default_rng(seed))
+        torch_gen: optional torch.Generator for randomness (takes precedence if provided)
+    """
+    if np_rng is None:
+        np_rng = np.random.default_rng()
+
+    use_torch = torch_gen is not None
+
+    groups = group_by_deg_max(monomials)
+    out = {}
+
+    for key, items in groups.items():
+        L = len(items)
+        if L < n:
+            raise ValueError(f"Group {key} has {L} items, needs at least n={n}.")
+        m_eff = min(m, n)  # in case m > n
+        prefix = items[:m_eff]
+
+        k = n - m_eff
+        if k > 0:
+            # sample k from the remaining L - m_eff
+            rem = items[m_eff:]
+            R = len(rem)
+            if R < k:
+                raise ValueError(f"Group {key}: only {R} available after first m={m_eff}, needs {k} more.")
+            if use_torch:
+                import torch
+                # randperm over range(R)
+                perm = torch.randperm(R, generator=torch_gen).tolist()
+                idxs = perm[:k]
+            else:
+                idxs = np_rng.choice(R, size=k, replace=False).tolist()
+            chosen = prefix + [rem[i] for i in idxs]
+        else:
+            chosen = prefix
+
+        out[key] = [i for (i, _) in chosen] if return_indices else [m for (_, m) in chosen]
+
+    return out
+
+# ---- Example ----
+# np_rng = np.random.default_rng(42)
+# samples = stratified_sample_monomials(monomials, n=5, m=2, np_rng=np_rng)
+# samples_idx = stratified_sample_monomials(monomials, n=5, m=2, return_indices=True, np_rng=np_rng)
+
