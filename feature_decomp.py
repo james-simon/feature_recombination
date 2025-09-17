@@ -201,40 +201,64 @@ def lookup_monomial_idx(monomials, monomial):
     return next((i for i, m in enumerate(monomials) if m == monomial), None)
 
 
-def group_by_deg_max(monomials):
+def group_by_deg_max(monomials, stop_at_degree=None, assume_sorted=False):
+    """
+    Return dict[(degree, max_degree)] -> list of (idx, monomial).
+
+    Args:
+        monomials: iterable of Monomial
+        stop_at_degree: if not None, exclude monomials with degree() > this value.
+                        If assume_sorted=True, we break at first degree()>stop_at_degree.
+        assume_sorted: if True, early-exit when degree exceeds stop_at_degree (faster).
+    """
     groups = {}
     for i, m in enumerate(monomials):
-        key = (m.degree(), m.max_degree())
+        deg = m.degree()
+        if stop_at_degree is not None and deg > stop_at_degree:
+            if assume_sorted:
+                break
+            else:
+                continue
+        key = (deg, m.max_degree())
         if key not in groups:
             groups[key] = []
         groups[key].append((i, m))
     return groups
 
-def stratified_sample_monomials(
-    monomials,
-    n,
-    m=0,
-    return_indices=False,
-    np_rng=None,
-    torch_gen=None
-):
+def stratified_sample_monomials( monomials, n, m=0, return_indices=False, np_rng=None,
+                                stop_at_degree=None, assume_sorted=False,):
     """
     Per stratum (degree, max_degree):
       - (0,0): always return its single element (ignores n, m).
       - Otherwise: include first m, and sample (n-m) from the rest without replacement.
+
+    Only strata formed from monomials with degree() <= stop_at_degree are considered
+    (if stop_at_degree is not None). If assume_sorted=True, grouping stops once a
+    degree()>stop_at_degree is encountered.
+
+    Args:
+        n: total to return per stratum
+        m: number of first-in-order items to force-include per stratum
+        return_indices: return original indices instead of objects
+        np_rng: optional numpy Generator
+        torch_gen: optional torch.Generator (takes precedence if provided)
+        stop_at_degree: optional int cutoff for degree()
+        assume_sorted: see group_by_deg_max
     """
     if np_rng is None:
         np_rng = np.random.default_rng()
 
-    use_torch = torch_gen is not None
-
-    groups = group_by_deg_max(monomials)
+    groups = group_by_deg_max(
+        monomials,
+        stop_at_degree=stop_at_degree,
+        assume_sorted=assume_sorted,
+    )
     out = {}
 
     for key, items in groups.items():
-        # Special-case the constant term stratum
+        # Special-case the constant term stratum: exactly one element.
         if key == (0, 0):
-            chosen = items[:1]  # exactly one element exists
+            chosen = items[:1]
             out[key] = [i for (i, _) in chosen] if return_indices else [m for (_, m) in chosen]
             continue
 
@@ -250,10 +274,6 @@ def stratified_sample_monomials(
             R = len(rem)
             if R < k:
                 raise ValueError(f"Group {key}: only {R} available after first m={m_eff}, needs {k} more.")
-            if use_torch:
-                import torch
-                perm = torch.randperm(R, generator=torch_gen).tolist()
-                idxs = perm[:k]
             else:
                 idxs = np_rng.choice(R, size=k, replace=False).tolist()
             chosen = prefix + [rem[i] for i in idxs]
