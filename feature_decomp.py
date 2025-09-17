@@ -201,15 +201,13 @@ def lookup_monomial_idx(monomials, monomial):
     return next((i for i, m in enumerate(monomials) if m == monomial), None)
 
 
+import numpy as np  # only import
+
 def group_by_deg_max(monomials, stop_at_degree=None, assume_sorted=False):
     """
     Return dict[(degree, max_degree)] -> list of (idx, monomial).
-
-    Args:
-        monomials: iterable of Monomial
-        stop_at_degree: if not None, exclude monomials with degree() > this value.
-                        If assume_sorted=True, we break at first degree()>stop_at_degree.
-        assume_sorted: if True, early-exit when degree exceeds stop_at_degree (faster).
+    If stop_at_degree is set, exclude monomials with degree() > stop_at_degree.
+    If assume_sorted=True, early-exit on the first degree()>stop_at_degree.
     """
     groups = {}
     for i, m in enumerate(monomials):
@@ -225,28 +223,21 @@ def group_by_deg_max(monomials, stop_at_degree=None, assume_sorted=False):
         groups[key].append((i, m))
     return groups
 
-def stratified_sample_monomials( monomials, n, m=0, return_indices=False, np_rng=None,
-                                stop_at_degree=None, assume_sorted=False,):
+def stratified_sample_monomials(monomials, n, m=0, return_indices=False, np_rng=None, stop_at_degree=None,
+                                assume_sorted=False,):
     """
-    Per stratum (degree, max_degree):
-      - (0,0): always return its single element (ignores n, m).
-      - Otherwise: include first m, and sample (n-m) from the rest without replacement.
+    For each (degree, max_degree) stratum:
+      • Always include the first m items (or as many as exist).
+      • Fill the remainder uniformly at random without replacement.
+      • If the stratum has fewer than n items, just return all of them.
+    (0,0) naturally works: it has size 1, so you get that single item.
 
-    Only strata formed from monomials with degree() <= stop_at_degree are considered
-    (if stop_at_degree is not None). If assume_sorted=True, grouping stops once a
-    degree()>stop_at_degree is encountered.
-
-    Args:
-        n: total to return per stratum
-        m: number of first-in-order items to force-include per stratum
-        return_indices: return original indices instead of objects
-        np_rng: optional numpy Generator
-        torch_gen: optional torch.Generator (takes precedence if provided)
-        stop_at_degree: optional int cutoff for degree()
-        assume_sorted: see group_by_deg_max
+    Reproducibility: pass either np_rng (numpy Generator) or torch_gen (torch.Generator).
+    Torch takes precedence if both are provided.
     """
     if np_rng is None:
         np_rng = np.random.default_rng()
+
 
     groups = group_by_deg_max(
         monomials,
@@ -256,30 +247,28 @@ def stratified_sample_monomials( monomials, n, m=0, return_indices=False, np_rng
     out = {}
 
     for key, items in groups.items():
-        # Special-case the constant term stratum: exactly one element.
-        if key == (0, 0):
-            chosen = items[:1]
-            out[key] = [i for (i, _) in chosen] if return_indices else [m for (_, m) in chosen]
-            continue
-
         L = len(items)
-        if L < n:
-            raise ValueError(f"Group {key} has {L} items, needs at least n={n}.")
-        m_eff = min(m, n)
+
+        target = n if L >= n else L
+
+        m_eff = m
+        if m_eff > target:
+            m_eff = target
+        if m_eff > L:
+            m_eff = L
+
         prefix = items[:m_eff]
 
-        k = n - m_eff
+        # Random remainder size
+        k = target - m_eff
         if k > 0:
             rem = items[m_eff:]
             R = len(rem)
-            if R < k:
-                raise ValueError(f"Group {key}: only {R} available after first m={m_eff}, needs {k} more.")
-            else:
-                idxs = np_rng.choice(R, size=k, replace=False).tolist()
+            idxs = np_rng.choice(R, size=k, replace=False).tolist()
             chosen = prefix + [rem[i] for i in idxs]
         else:
             chosen = prefix
 
-        out[key] = [i for (i, _) in chosen] if return_indices else [m for (_, m) in chosen]
+        out[key] = [i for (i, _) in chosen] if return_indices else [mm for (_, mm) in chosen]
 
     return out
