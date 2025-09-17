@@ -43,15 +43,17 @@ WIDTH = 8192
 GAMMA = 1
 
 # Training HPs
+ONLINE = False
 PERCENT_THRESHOLDS = (0.5, 1e-12) #needs a len atm
 MAX_ITER = int(1e20)
 EMA_SMOOTHER = 0.9
 DETERMINSITIC = True
 trial_counts = np.array([trial_count_fn(n) for n in NS], dtype=int)
-max_trials   = int(trial_counts.max())
-ONLINE = False
+
 if ONLINE:
+    NS=np.array([256])
     trial_counts = np.ones_like(NS)*2
+    PERCENT_THRESHOLDS = (0.5, 0.3)
 
 global_config = dict(DEPTH=DEPTH, WIDTH=WIDTH, LR=LR, GAMMA=GAMMA,
     EMA_SMOOTHER=EMA_SMOOTHER, MAX_ITER=MAX_ITER,

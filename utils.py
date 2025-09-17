@@ -101,4 +101,6 @@ def seed_everything(seed_int, device_id=0, make_generators=True, deterministic=F
     if deterministic:
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
+    if not(torch.cuda.is_available()):
+        return (torch.Generator(device=f"cpu").manual_seed(seed_int), np.random.default_rng(seed_int)) if make_generators else None
     return (torch.Generator(device=f"cuda:{device_id}").manual_seed(seed_int), np.random.default_rng(seed_int)) if make_generators else None

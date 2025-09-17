@@ -119,7 +119,7 @@ def get_synthetic_dataset(X=None, data_eigvals=None, d=500, N=15000, offset=3, a
 
     kernel_width = kwargs.get("kernel_width", 2)
     kerneltype = kwargs.get("kerneltype", None)
-    fra_eigvals, monomials = generate_fra_monomials(data_eigvals, cutoff_mode, kerneltype.get_level_coeff_fn(kernel_width=kernel_width, data_eigvals=data_eigvals), kmax=kwargs.get('kmax', 9))
+    fra_eigvals, monomials = generate_fra_monomials(data_eigvals, cutoff_mode, kerneltype.get_level_coeff_fn(kernel_width=kernel_width, data_eigvals=data_eigvals, **kwargs), kmax=kwargs.get('kmax', 9))
     H = ensure_torch(get_matrix_hermites(X, monomials))
     fra_eigvals = ensure_torch(fra_eigvals)
     v_true = get_powerlaw(H.shape[1], beta/2, offset=yoffset, normalize=normalized)

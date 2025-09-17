@@ -253,127 +253,96 @@ class LaplaceKernel(Kernel):
         obj.kernel_width = data["kernel_width"]
         return obj
 
-class ReLUNTKKernel(Kernel):
+class ReluNTK(Kernel):
 
     def __init__(self, X, **kwargs):
         super().__init__(X)
-        self.sigma_w2 = kwargs["sigma_w2"] #cov of weight entries
-        self.sigma_b2 = kwargs["sigma_b2"] #cov of bias entries
-      
-        eps = 1e-12
+        w_var, b_var = ReluNTK.parse_kwargs(kwargs)
+        self.w_var = w_var
+        self.b_var = b_var
 
-        G = self.X  @ self.X .T
-        nrm = torch.linalg.norm(X, dim=1, keepdim=True).clamp_min(eps)
-        denom = (nrm @ nrm.T).clamp_min(eps)
-        rho = (G / denom).clamp(-1 + eps, 1 - eps)
+        norms = torch.linalg.norm(self.X, dim=-1, keepdim=True)
+        p = b_var + w_var * norms**2
+        normalizer = (p @ p.T).sqrt()
 
-        self.s2 = self.sigma_w2 + self.sigma_b2
-        self.a = self.sigma_b2 / self.s2
-        b = self.sigma_w2 / self.s2
-        rho_tilde = self.a + b * rho
+        first_layer_nngp = (w_var * self.X @ self.X.T) + b_var
+        theta = torch.acos((first_layer_nngp / normalizer).clip(-1, 1))
 
-        acos = torch.acos(rho_tilde)
-        sqrt_term = torch.sqrt(torch.clamp(1 - rho_tilde**2, min=0))
-        H = (np.pi - acos) / 2.0 * np.pi
-        J = (sqrt_term + (np.pi - acos) * rho_tilde) / 2.0 * np.pi
-
-        self.K = self.s2 * J + self.sigma_w2 * rho * H
-
+        second_layer_nngp = (w_var * normalizer * (torch.sin(theta) + torch.cos(theta) * (np.pi - theta))) / (2*np.pi)
+        second_layer_ntk = (w_var * first_layer_nngp * (np.pi - theta)) / (2*np.pi)
+        self.K = second_layer_nngp + second_layer_ntk
+        del normalizer, first_layer_nngp, theta, second_layer_nngp, second_layer_ntk
 
     @staticmethod
-    def get_level_coeff_fn(self, **kwargs):     
-        H  = lambda z: (np.pi - np.arccos(z)) / (2*np.pi)
-        Hp = lambda z: 1.0/(2*np.pi) / np.sqrt(1 - z*z)
-        Hpp= lambda z: 1.0/(2*np.pi) * z / (1 - z*z)**(1.5)
-        H3 = lambda z: 1.0/(2*np.pi) * (1 + 2*z*z) / (1 - z*z)**(2.5)
-        H4 = lambda z: 1.0/(2*np.pi) * 3*z*(3 + 2*z*z) / (1 - z*z)**(3.5)
-        H5 = lambda z: (1.0/2*np.pi) * (9 + 72*z**2 + 24*z**4) / (1 - z*z)**(4.5)
-        H6 = lambda z: (1.0/2*np.pi) * (225*z + 600*z**3 + 120*z**5) / (1 - z*z)**(5.5)
-        H7 = lambda z: (1.0/2*np.pi) * (225 + 4050*z**2 + 5400*z**4 + 720*z**6) / (1 - z*z)**(6.5)
-        H8 = lambda z: (1.0/2*np.pi) * (11025*z + 66150*z**3 + 52920*z**5 + 5040*z**7) / (1 - z*z)**(7.5)
-        H9 = lambda z: (1.0/2*np.pi) * (11025 + 352800*z**2 + 1058400*z**4 + 564480*z**6 + 40320*z**8) / (1 - z*z)**(8.5)
-        J  = lambda z: 1.0/(2*np.pi) * (np.sqrt(1 - z*z) + (np.pi - np.arccos(z))*z)
+    def parse_kwargs(kwargs):
+        if "weight_variance" in kwargs and "bias_variance" in kwargs:
+            w_var = kwargs["weight_variance"]
+            b_var = kwargs["bias_variance"]
+        else:
+            k_width = kwargs.get("kernel_width", 1.0)
+            w_var = np.sqrt((2*np.pi)/(1 + 2*np.pi*k_width))
+            b_var = k_width * w_var
+        return w_var, b_var
+
+    @staticmethod
+    def get_level_coeff_fn(data_eigvals, **kwargs):
+        w_var, b_var = ReluNTK.parse_kwargs(kwargs)
+
+        rho = ensure_numpy(data_eigvals).sum()
+        q = b_var + w_var * rho
+        c0 = b_var / q
+        if abs(c0) >= 1.0:
+            raise ValueError("|c0|=1 makes higher derivatives singular; ensure w_var>0.")
+
+        pref = w_var * q / (2*np.pi)
+        scale = w_var / q
         
-        coeffs = {0: self.s2 * J(self.a),
-              1: 2*self.sigma_w2 * H(self.a),
-              2: (3*self.sigma_w2**2/self.s2) * Hp(self.a),
-              3: (4*self.sigma_w2**3/self.s2**2) * Hpp(self.a),
-              4: (5*self.sigma_w2**4/self.s2**3) * H3(self.a),
-              5: (6*self.sigma_w2**5/self.s2**4) * H4(self.a),
-              6: (7*self.sigma_w2**6/self.s2**5) * H5(self.a),
-              7: (8*self.sigma_w2**7/self.s2**6) * H6(self.a),
-              8: (9*self.sigma_w2**8/self.s2**7) * H7(self.a),
-              9: (10*self.sigma_w2**9/self.s2**8) * H8(self.a),
-              10: (11*self.sigma_w2**10/self.s2**9) * H9(self.a)}
+        def _poly_add(a, b, sa=1.0, sb=1.0):
+            n = max(len(a), len(b))
+            out = [0.0]*n
+            for i in range(n):
+                va = a[i] if i < len(a) else 0.0
+                vb = b[i] if i < len(b) else 0.0
+                out[i] = sa*va + sb*vb
+            return out
+
+        def _poly_eval(cs, c):
+            p = 0.0
+            for k in reversed(range(len(cs))):
+                p = p*c + cs[k]
+            return p
+
+        def eval_level_coeff(ell):
+            P = [3.0, 0.0, -2.0]
+            if ell == 0:
+                c = float(np.clip(c0, -1.0, 1.0))
+                Gk_at_c0 = np.sqrt(max(0.0, 1.0 - c**2)) + 2.0*(np.pi - np.arccos(c))*c
+            elif ell == 1:
+                c = float(np.clip(c0, -1.0, 1.0))
+                denom = np.sqrt(max(0.0, 1.0 - c**2))
+                Gk_at_c0 = 2.0*(np.pi - np.arccos(c)) + (c/denom if denom > 0 else float('inf'))
+            elif ell == 2:
+                Gk_at_c0 = _poly_eval(P, c0) / (1.0 - c0*c0)**1.5
+            else:
+                for cur_ell in range(2, ell):
+                    term1 = [k*P[k] for k in range(1, len(P))]
+                    term1 = _poly_add(term1, [0.0, 0.0] + term1, 1.0, -1.0)
+                    term2 = [0.0] + list(P)
+                    P = _poly_add(term1, term2, 1.0, (2*cur_ell - 1))
+                Gk_at_c0 = _poly_eval(P, c0) / (1.0 - c0*c0)**(ell - 0.5)
+            return pref * (scale**ell) * float(Gk_at_c0)
         
-        def eval_level_coeff(ell: int):
-            if not (0 <= ell <= 10):
-                raise ValueError("Only 0 <= ell <= 10 are precomputed here.")
-            return coeffs[ell]
         return eval_level_coeff
     
     def serialize(self):
         data = super().serialize()
-        data["sigma_w2"] = self.sigma_w2
-        data["sigma_b2"] = self.sigma_b2
+        data["w_var"] = self.w_var
+        data["b_var"] = self.b_var
         return data
     
     @classmethod
     def deserialize(cls, data):
         obj = super().deserialize(data)
-        obj.sigma_w2 = data["sigma_w2"]
-        obj.sigma_b2 = data["sigma_b2"]
+        obj.w_var = data["w_var"]
+        obj.b_var = data["b_var"]
         return obj
-
-
-# class ReluNNGPKernel(Kernel):
-
-#     def __init__(self, X, **kwargs):
-#         super().__init__(X)
-#         norms = torch.linalg.norm(self.X, dim=-1, keepdim=True)
-#         K_norm = norms @ norms.T
-#         theta = torch.acos((self.X @ self.X.T / K_norm).clip(-1, 1))
-#         angular = torch.sin(theta) + (np.pi - theta)*torch.cos(theta)
-#         self.K = 1/(2*np.pi) * K_norm * angular
-
-#     @staticmethod
-#     def get_level_coeff_fn(data_eigvals, **kwargs):
-#         q = data_eigvals.sum().item()
-#         numerator = {
-#             0: 1,
-#             1: np.pi / 2,
-#             2: 1,
-#             3: 0,
-#             4: 1,
-#             5: 0,
-#             6: 9,
-#             7: 0,
-#             8: 225,
-#             9: 0,
-#             10: 11025,
-#         }
-
-#         def eval_level_coeff(ell):
-#             assert ell in numerator, f"level coeff {ell} not solved (sorry!)"
-#             f = numerator[ell] / q**ell
-#             return f * q / (2*np.pi)
-#         return eval_level_coeff
-
-
-# class RandomFeatureKernel(Kernel):
-
-#     def __init__(self, X, **kwargs):
-#         super().__init__(X)
-#         self.nonlinearity = kwargs["nonlinearity"]
-#         self.num_features = kwargs["num_features"]
-#         self.randomize_features(self.num_features)
-
-#     def randomize_features(self, num_features=None):
-#         if num_features is None:
-#             num_features = self.num_features
-#         d = self.X.shape[1]
-#         W = ensure_torch(torch.normal(0, 1/np.sqrt(d), size=(d, num_features)))
-#         features = self.X @ W
-#         if self.nonlinearity:
-#             features = self.nonlinearity(features)
-#         self.set_K(features @ features.T)
