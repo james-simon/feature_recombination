@@ -201,70 +201,78 @@ def lookup_monomial_idx(monomials, monomial):
     return next((i for i, m in enumerate(monomials) if m == monomial), None)
 
 
-import numpy as np  # only import
-
 def group_by_deg_max(monomials, stop_at_degree=None, assume_sorted=False):
-    """
-    Return dict[(degree, max_degree)] -> list of (idx, monomial).
-    If stop_at_degree is set, exclude monomials with degree() > stop_at_degree.
-    If assume_sorted=True, early-exit on the first degree()>stop_at_degree.
-    """
     groups = {}
     for i, m in enumerate(monomials):
         deg = m.degree()
         if stop_at_degree is not None and deg > stop_at_degree:
             if assume_sorted:
                 break
-            else:
-                continue
+            continue
         key = (deg, m.max_degree())
         if key not in groups:
             groups[key] = []
         groups[key].append((i, m))
     return groups
 
+def _make_weights(R, mode="exp", tau=0.5):
+    """
+    Produce weights w[0..R-1] where smaller index => larger weight.
+    mode:
+      - "exp": w_i ∝ exp(-(i)/tau)  (strong early preference as tau ↓)
+      - "linear": w_i ∝ (R - i)
+    """
+    if R <= 0:
+        return np.array([], dtype=float)
+    if mode == "linear":
+        w = (R - np.arange(R)).astype(float)
+    else:  # "exp" (default)
+        w = np.exp(-np.arange(R, dtype=float) / max(tau, 1e-8))
+    s = w.sum()
+    if not np.isfinite(s) or s <= 0:
+        # safety fallback to uniform
+        w = np.ones(R, dtype=float) / R
+    else:
+        w /= s
+    return w
+
 def stratified_sample_monomials(monomials, n, m=0, return_indices=False, np_rng=None, stop_at_degree=None,
-                                assume_sorted=False,):
+                                assume_sorted=False, weight_mode="exp", tau=0.5,):
     """
     For each (degree, max_degree) stratum:
-      • Always include the first m items (or as many as exist).
-      • Fill the remainder uniformly at random without replacement.
-      • If the stratum has fewer than n items, just return all of them.
-    (0,0) naturally works: it has size 1, so you get that single item.
+      • Include first m (deterministic, capped by target size).
+      • Fill the remaining (target - m) by weighted sampling WITHOUT replacement,
+        upweighting earlier items in the remainder (lower index = higher prob).
+      • If stratum has < n items, return all of them.
 
-    Reproducibility: pass either np_rng (numpy Generator) or torch_gen (torch.Generator).
-    Torch takes precedence if both are provided.
+    Reproducibility:
+      - Pass np_rng = np.random.default_rng(seed) OR
+      - Pass torch_gen = torch.Generator().manual_seed(seed) (takes precedence).
     """
     if np_rng is None:
         np_rng = np.random.default_rng()
 
 
-    groups = group_by_deg_max(
-        monomials,
-        stop_at_degree=stop_at_degree,
-        assume_sorted=assume_sorted,
-    )
+    groups = group_by_deg_max(monomials, stop_at_degree=stop_at_degree, assume_sorted=assume_sorted)
     out = {}
 
     for key, items in groups.items():
         L = len(items)
+        if L == 0:
+            continue
+        target = min(n, L)
 
-        target = n if L >= n else L
-
-        m_eff = m
-        if m_eff > target:
-            m_eff = target
-        if m_eff > L:
-            m_eff = L
-
+        # Deterministic prefix (first m)
+        m_eff = min(m, target)
         prefix = items[:m_eff]
 
-        # Random remainder size
         k = target - m_eff
         if k > 0:
             rem = items[m_eff:]
             R = len(rem)
-            idxs = np_rng.choice(R, size=k, replace=False).tolist()
+            # weights favor earlier items in 'rem'
+            w = _make_weights(R, mode=weight_mode, tau=tau)
+            idxs = np_rng.choice(R, size=k, replace=False, p=w).tolist()
             chosen = prefix + [rem[i] for i in idxs]
         else:
             chosen = prefix
