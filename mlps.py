@@ -6,30 +6,65 @@ from collections import deque
 from mupify import mupify, rescale
 
 
-class MLP(nn.Module):
+import copy
+import torch
+import torch.nn as nn
+
+class UncenteredMLP(nn.Module):
     def __init__(self, d_in=1, width=4096, depth=2, d_out=1, bias=True):
         super().__init__()
         self.input_layer = nn.Linear(d_in, width, bias)
-        self.hidden_layers = nn.ModuleList([nn.Linear(width, width, bias) for _ in range(depth - 1)])
+        self.hidden_layers = nn.ModuleList(
+            [nn.Linear(width, width, bias) for _ in range(depth - 1)]
+        )
         self.output_layer = nn.Linear(width, d_out, bias)
         self.relu = nn.ReLU()
-        self._init_params = {k: p.detach().cpu().clone() for k, p in self.named_parameters()}
 
-    def _forward(self, x):
+    def forward(self, x):
         h = self.relu(self.input_layer(x))
         for layer in self.hidden_layers:
             h = self.relu(layer(h))
         return self.output_layer(h)
+    
+    def get_activations(self, x):
+        h_acts = []
+        h = self.relu(self.input_layer(x))
+        h_acts.append(h)
+        for layer in self.hidden_layers:
+            h = self.relu(layer(h))
+            h_acts.append(h)
+        h_out = self.output_layer(h)
+        return h_acts, h_out
+
+class MLP(nn.Module):
+    """
+    y(x) = model(x) - baseline(x), where `baseline` is a frozen clone of `model` at init.
+    Optional: keep baseline in lower precision via `baseline_dtype` (e.g., torch.bfloat16).
+    """
+    def __init__(self, d_in=1, width=4096, depth=2, d_out=1, bias=True, baseline_dtype=None):
+        super().__init__()
+        self.model = UncenteredMLP(d_in, width, depth, d_out, bias)
+        self.baseline = copy.deepcopy(self.model)  # snapshot at init
+        for p in self.baseline.parameters():
+            p.requires_grad = False
+        self.baseline.eval()
+
+        self._baseline_dtype = baseline_dtype
+        if baseline_dtype is not None:
+            self.baseline.to(dtype=baseline_dtype)
+
+    @torch.no_grad()
+    def recenter(self):
+        """Reset the baseline to the current model weights (still frozen)."""
+        self.baseline.load_state_dict(self.model.state_dict())
+        if self._baseline_dtype is not None:
+            self.baseline.to(dtype=self._baseline_dtype)
+        self.baseline.eval()
 
     def forward(self, x):
-        y = self._forward(x)
-
-        # init forward WITHOUT grads (no graph, no activations kept)
-        init_params = {k: v.to(x.device, x.dtype) for k, v in self._init_params.items()}
-        with torch.inference_mode():                      # or torch.no_grad()
-            with torch.autocast(device_type=x.device.type, dtype=torch.bfloat16, enabled=(x.is_cuda)):
-                y0 = functional_call(self, init_params, (x,))
-
+        y = self.model(x)  # grads retained
+        with torch.inference_mode():  # no grads/memory for baseline pass
+            y0 = self.baseline(x)
         return y - y0
 
     def get_activations(self, x):
