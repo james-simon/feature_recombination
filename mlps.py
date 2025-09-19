@@ -97,7 +97,7 @@ def train_network(model, batch_function, lr=1e-2, max_iter=int(1e3), loss_checkp
     opt = torch.optim.SGD(model.parameters(), lr=lr)
     mupify(model, opt, param="mup")
     rescale(model, gamma)
-    model = centeredMLP(model).to(next(model.parameters()).device)
+    # model = centeredMLP(model).to(next(model.parameters()).device)
     loss_fn = torch.nn.MSELoss()
 
     # thresholding
