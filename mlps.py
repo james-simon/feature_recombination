@@ -13,19 +13,22 @@ class MLP(nn.Module):
         self.hidden_layers = nn.ModuleList([nn.Linear(width, width, bias) for _ in range(depth - 1)])
         self.output_layer = nn.Linear(width, d_out, bias)
         self.relu = nn.ReLU()
-        # snapshot init params
-        self._init_params = {k: p.detach().clone() for k, p in self.named_parameters()}
+        self._init_params = {k: p.detach().cpu().clone() for k, p in self.named_parameters()}
 
-    def forward(self, x):
-        # current forward
+    def _forward(self, x):
         h = self.relu(self.input_layer(x))
         for layer in self.hidden_layers:
             h = self.relu(layer(h))
-        y = self.output_layer(h)
+        return self.output_layer(h)
 
-        # init forward
-        init_params = {k: v.to(device=x.device, dtype=x.dtype) for k, v in self._init_params.items()}
-        y0 = functional_call(self, init_params, (x,))
+    def forward(self, x):
+        y = self._forward(x)
+
+        # init forward WITHOUT grads (no graph, no activations kept)
+        init_params = {k: v.to(x.device, x.dtype) for k, v in self._init_params.items()}
+        with torch.inference_mode():                      # or torch.no_grad()
+            with torch.autocast(device_type=x.device.type, dtype=torch.bfloat16, enabled=(x.is_cuda)):
+                y0 = functional_call(self, init_params, (x,))
 
         return y - y0
 
