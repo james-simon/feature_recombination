@@ -1,28 +1,33 @@
 import torch.nn as nn
 import torch
+from torch.func import functional_call
 import numpy as np
 from collections import deque
-
-from tools import ensure_torch
-
 from mupify import mupify, rescale
+
 
 class MLP(nn.Module):
     def __init__(self, d_in=1, width=4096, depth=2, d_out=1, bias=True):
         super().__init__()
-        self.d_in, self.width, self.depth, self.d_out = d_in, width, depth, d_out
-
         self.input_layer = nn.Linear(d_in, width, bias)
         self.hidden_layers = nn.ModuleList([nn.Linear(width, width, bias) for _ in range(depth - 1)])
         self.output_layer = nn.Linear(width, d_out, bias)
         self.relu = nn.ReLU()
+        # snapshot init params
+        self._init_params = {k: p.detach().clone() for k, p in self.named_parameters()}
 
     def forward(self, x):
+        # current forward
         h = self.relu(self.input_layer(x))
         for layer in self.hidden_layers:
             h = self.relu(layer(h))
-        out = self.output_layer(h)
-        return out
+        y = self.output_layer(h)
+
+        # init forward
+        init_params = {k: v.to(device=x.device, dtype=x.dtype) for k, v in self._init_params.items()}
+        y0 = functional_call(self, init_params, (x,))
+
+        return y - y0
 
     def get_activations(self, x):
         h_acts = []
