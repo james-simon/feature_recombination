@@ -94,7 +94,7 @@ class Monomial(dict):
 
         return cls(out)
     
-    def basis_list(self, include_one: bool = False, canonical: bool = True):
+    def basis_factors(self, include_one: bool = False, canonical: bool = True):
         """
         Return a list of unit-degree Monomials whose product equals this monomial.
         Example: Monomial({0: 2, 3: 1}) -> [Monomial({0:1}), Monomial({0:1}), Monomial({3:1})]
@@ -110,6 +110,15 @@ class Monomial(dict):
             for _ in range(int(exp)):
                 factors.append(Monomial({idx: 1}))
         return factors
+    
+    def basis(self, canonical: bool = True) -> dict:
+        if self.degree() == 0:
+            return {}
+
+        items = sorted(self.items()) if canonical else self.items()
+        return {idx: int(exp) for idx, exp in items}
+
+
 
 
 def get_fra_eigval(data_eigvals, monomial, eval_level_coeff):
