@@ -97,7 +97,7 @@ def train_network(model, batch_function, lr=1e-2, max_iter=int(1e3), loss_checkp
     opt = torch.optim.SGD(model.parameters(), lr=lr)
     mupify(model, opt, param="mup")
     rescale(model, gamma)
-    # model = centeredMLP(model).to(next(model.parameters()).device)
+    model = centeredMLP(model).to(next(model.parameters()).device)
     loss_fn = torch.nn.MSELoss()
 
     # thresholding
@@ -110,6 +110,7 @@ def train_network(model, batch_function, lr=1e-2, max_iter=int(1e3), loss_checkp
         te_losses = np.empty(max_iter, dtype=float)
     ema = None
     pointer = 0   
+    X_tr_not_provided = X_tr is None
 
     # training loop 
     for i in range(max_iter):
@@ -122,7 +123,7 @@ def train_network(model, batch_function, lr=1e-2, max_iter=int(1e3), loss_checkp
         opt.step()
 
         tr_loss_val = float(loss.item())
-        if X_tr is None: #online training if none
+        if X_tr_not_provided: #refactor since X_tr keeps getting defined
             te_loss_val = tr_loss_val
         else:
             with torch.no_grad():
