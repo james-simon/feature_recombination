@@ -1,110 +1,75 @@
 import numpy as np
 import torch
 
-from einops import rearrange
-
 import sys
 import os
 import json
 
 sys.path.append("../")
 
-from ImageData import ImageData, preprocess
 from ExptTrace import ExptTrace
 from FileManager import FileManager
-from kernels import GaussianKernel, LaplaceKernel, krr
-from feature_decomp import generate_hea_monomials
-from utils import ensure_torch, ensure_numpy
-from data import get_powerlaw, get_matrix_hermites, get_powerlaw_target
-from tools import grf
+from kernels import GaussianKernel, LaplaceKernel, ReluNTK, krr_loop
+from feature_decomp import generate_hea_monomials, get_monomial_targets
+from utils import ensure_torch, ensure_numpy, get_powerlaw
+from data import get_binarized_dataset, preprocess, compute_hermite_basis
+from expt_demux import expt_demux
 
 
-EXPT_NAME = "learning-curves-debug"
-N_SAMPLES = 25_000
-P_MODES = 50_000
-DATA_DIM = 200
-
-# Defaults
-DATASET = "gaussian"
-DATA_EIGVAL_EXP = 1.0
-ZCA_STRENGTH = 0
-GRAYSCALE = False
-M_GRF = 99_000
-TARGET = "powerlaws"
-source_exps = [1.15]
-KERNEL_TYPE = GaussianKernel
-KERNEL_WIDTH = 10
-RIDGE = 1e-3
-
-# Allow command line arguments
+EXPT_NAME = "learning-curves"
+expt_id = None
 if len(sys.argv) > 1:
     try:
         expt_id = int(sys.argv[1])
     except ValueError:
         print("Error: Expt num must be an integer")
         sys.exit(1)
-    
-    if expt_id == 1:
-        DATASET = "cifar10"
-        TARGET = "vehicle"
-    if expt_id == 2:
-        DATASET = "cifar10"
-        TARGET = "domesticated"
-    if expt_id == 3:
-        DATASET = "svhn"
-        ZCA_STRENGTH = 1e-2
-        TARGET = "evenodd"
-        GRAYSCALE = True
-    if expt_id == 4:
-        DATASET = "svhn"
-        ZCA_STRENGTH = 1e-2
-        TARGET = "loops"
-        GRAYSCALE = True
-    if expt_id == 5:
-        KERNEL_TYPE = LaplaceKernel
-        ZCA_STRENGTH = 5e-3
-        DATASET = "cifar10"
-        TARGET = "vehicle"
-        M_GRF = 40_000
-    if expt_id == 6:
-        KERNEL_TYPE = LaplaceKernel
-        ZCA_STRENGTH = 5e-3
-        DATASET = "cifar10"
-        TARGET = "domesticated"
-        M_GRF = 30_000
-    if expt_id == 7:
-        KERNEL_TYPE = LaplaceKernel
-        ZCA_STRENGTH = 1e-2
-        GRAYSCALE = True
-        DATASET = "svhn"
-        TARGET = "evenodd"
-    if expt_id == 8:
-        KERNEL_TYPE = LaplaceKernel
-        ZCA_STRENGTH = 1e-2
-        GRAYSCALE = True
-        DATASET = "svhn"
-        TARGET = "loops"
-    if expt_id == 9:
-        # THIS WORKS!
-        KERNEL_TYPE = LaplaceKernel
-        DATASET = "gaussian"
-        DATA_EIGVAL_EXP = 1.6
-        TARGET = "powerlaws"
-    if expt_id == 10:
-        # THIS WORKS!
-        KERNEL_TYPE = LaplaceKernel
-        ZCA_STRENGTH = 1e-2
-        DATASET = "cifar10"
-        M_GRF = 50_000
-        TARGET = "powerlaws"
-    
-assert TARGET in ["powerlaws", "original", "vehicle", "domesticated", "evenodd", "loops"]
+hypers = expt_demux(expt_id)
 
-hypers = dict(expt_name=EXPT_NAME, dataset=DATASET, kernel_name=KERNEL_TYPE.__name__,
-              kernel_width=KERNEL_WIDTH, n_samples=N_SAMPLES, p_modes=P_MODES,
-              data_dim=DATA_DIM, data_eigval_exp=DATA_EIGVAL_EXP,
-              zca_strength=ZCA_STRENGTH, grayscale=GRAYSCALE,
-              ridge=RIDGE, target=TARGET)
+N_SAMPLES = hypers['n_samples']
+N_KERNEL = hypers['n_kernel']
+N_TRAIN_MAX = hypers['n_train_max']
+N_TEST = hypers['n_test']
+P_MODES = hypers['p_modes']
+DATASET = hypers['dataset']
+DATA_DIM = hypers['data_dim']
+DATA_EIGVAL_EXP = hypers['data_eigval_exp']
+ZCA_STRENGTH = hypers['zca_strength']
+NORMALIZE = hypers['normalize']
+TARGET = hypers['target']
+NUM_MARKERS = hypers['num_markers']
+if hypers['kernel_name'] == "GaussianKernel":
+    KERNEL_TYPE = GaussianKernel
+elif hypers['kernel_name'] == "LaplaceKernel":  
+    KERNEL_TYPE = LaplaceKernel
+elif hypers['kernel_name'] == "ReluNTK":
+    KERNEL_TYPE = ReluNTK
+else:
+    raise ValueError(f"Unknown kernel {hypers['kernel_name']}")
+KERNEL_WIDTH = hypers['kernel_width']
+RIDGE = hypers['ridge']
+FEWER_TRIALS = hypers['fewer_trials']
+
+target2classes = {
+    # plane car ship truck vs bird cat deer dog frog horse
+    "vehicle": [[0, 1, 8, 9], [2, 3, 4, 5, 6, 7]],
+    # cat dog horse vs bird deer frog
+    "domesticated": [[3, 5, 7], [2, 4, 6]],
+    "evenodd": [[0, 2, 4, 6, 8], [1, 3, 5, 7, 9]],
+    "loops": [[0, 6, 8, 9], [1, 3, 5, 7]],
+    "plane-frog": [[0], [6]],
+    "car-ship": [[1], [8]],
+    "bird-cat": [[2], [3]],
+    "deer-horse": [[4], [7]],
+    "dog-else": [[5], [0, 1, 2, 3, 4, 6, 7, 8, 9]],
+    "cat-else": [[3], [0, 1, 2, 4, 5, 6, 7, 8, 9]],
+    "dog-frog": [[5], [6]],
+    "car-truck": [[1], [9]],
+    "4-2": [[4], [2]],
+    "4-9": [[4], [9]],
+    "0-else": [[0], [1, 2, 3, 4, 5, 6, 7, 8, 9]],
+    "primes": [[2, 3, 5, 7], [4, 6, 8, 9]]
+}
 
 
 # SETUP FILE MANAGEMENT
@@ -137,43 +102,16 @@ with open(expt_fm.get_filename("hypers.json"), 'w') as f:
 if DATASET == "gaussian":
     data_eigvals = get_powerlaw(DATA_DIM, DATA_EIGVAL_EXP, offset=6)
     # on average, we expect norm(x_i) ~ Tr(data_eigvals)
-    X = ensure_torch(torch.normal(0, 1, (M_GRF, DATA_DIM)))
+    X = ensure_torch(torch.normal(0, 1, (N_SAMPLES, DATA_DIM)))
     X *= torch.sqrt(ensure_torch(data_eigvals))
-if DATASET in ["cifar10", "imagenet32", "svhn"]:
-    if DATASET == "cifar10":
-        data_dir = os.path.join(datapath, "cifar10")
-        if TARGET == "vehicle":
-            # plane car ship truck vs bird cat deer dog
-            classes = [[0, 1, 8, 9], [2, 3, 4, 5]]
-        elif TARGET == "domesticated":
-            # cat dog horse vs bird deer frog
-            classes = [[3, 5, 7], [2, 4, 6]]
-        else: classes = None
-        cifar10 = ImageData('cifar10', data_dir, classes=classes)
-        X_raw, labels = cifar10.get_dataset(M_GRF, get="train")
-    if DATASET == "svhn":
-        data_dir = os.path.join(datapath, "svhn")
-        if TARGET == "evenodd":
-            classes = [[0, 2, 4, 6, 8], [1, 3, 5, 7, 9]]
-        elif TARGET == "loops":
-            classes = [[0, 6, 8, 9], [1, 3, 5, 7]]
-        else: classes = None
-        svhn = ImageData('svhn', data_dir, classes=classes)
-        if M_GRF > 73_257:
-            assert M_GRF <= 73_257 + 26_032, "SVHN dataset size exceeded"
-            # TODO
-        else:
-            X_raw, labels = svhn.get_dataset(M_GRF, get="train")
-    if DATASET == "imagenet32":
-        fn = os.path.join(datapath, "imagenet", f"{DATASET}.npz")
-        data = np.load(fn)
-        X_raw = data['data'][:M_GRF].astype(float)
-        X_raw = rearrange(X_raw, 'n (c h w) -> n c h w', c=3, h=32, w=32)
-    X = preprocess(X_raw, center=True, grayscale=GRAYSCALE, zca_strength=ZCA_STRENGTH)
+if DATASET in ["cifar5m", "imagenet32", "svhn"]:
+    classes = target2classes.get(TARGET, None)
+    X, labels = get_binarized_dataset(DATASET, classes, N_SAMPLES)
     X = ensure_torch(X)
+    X = preprocess(X, center=True, normalize=NORMALIZE, zca_strength=ZCA_STRENGTH)
     # ensure typical sample has unit norm
     S = torch.linalg.svdvals(X)
-    X *= torch.sqrt(M_GRF / (S**2).sum())
+    X *= torch.sqrt(N_SAMPLES / (S**2).sum())
     data_eigvals = S**2 / (S**2).sum()
 
 d_eff = 1/(data_eigvals**2).sum()
@@ -182,53 +120,47 @@ print(f"d_eff: {d_eff:.2f}", end="\n")
 eval_level_coeff = KERNEL_TYPE.get_level_coeff_fn(data_eigvals=data_eigvals,
                                                   kernel_width=KERNEL_WIDTH)
 print("Generating hermites...", end=" ")
-hehe_eigvals, monomials = generate_hea_monomials(data_eigvals, P_MODES, eval_level_coeff)
-H = get_matrix_hermites(X, monomials)
+hea_eigvals, monomials = generate_hea_monomials(data_eigvals, P_MODES, eval_level_coeff)
+H = compute_hermite_basis(X, monomials)
 print("done.")
 
 targets = {}
-if TARGET == "powerlaws":
+if TARGET == "monomials":
+    monomial_idxs = get_monomial_targets(monomials, hea_eigvals, n_markers=NUM_MARKERS)
+    print(f"Total target monomials: {len(monomial_idxs)}")
+    for idx in monomial_idxs:
+        ystar = ensure_numpy(H[:, idx])
+        # ensure size(y_i) ~ 1
+        targets[idx] = np.sqrt(N_SAMPLES) * ystar / np.linalg.norm(ystar)    
+elif TARGET == "powerlaws":
+    source_exps = [1.05, 1.1, 1.15, 1.25, 1.4, 1.6]
     for source_exp in source_exps:
-        # get_powerlaw_target ensures size(y_i) ~ 1
-        ystar = get_powerlaw_target(H, source_exp)
+        powerlaw = get_powerlaw(P_MODES, source_exp, offset=6)
+        vstar = np.random.normal(0, 1, (P_MODES,)) * np.sqrt(powerlaw)
+        vstar[0] = 0 # no constant mode
+        vstar /= np.linalg.norm(vstar)
+        y = (H / np.linalg.norm(H, axis=0, keepdims=True)) @ vstar
+        # ensure size(y_i) ~ 1
+        ystar = np.sqrt(N_SAMPLES) * y / np.linalg.norm(y)
+        tail = P_MODES**(1-source_exp)
+        noise = np.random.normal(0, 1, size=N_SAMPLES)
+        ystar = np.sqrt(1-tail) * ystar + np.sqrt(tail) * noise
         targets[source_exp] = ystar
-if TARGET == "original":
-    for i in range(10):
-        # z-score normalization ensures size(y_i) ~ 1
-        targets[i] = ensure_numpy(1/3 * (-1 + 10*labels[:, i]))
-if TARGET in ["vehicle", "domesticated", "evenodd", "loops"]:
-    targets[TARGET] = ensure_numpy(-1 + 2*labels[:, 1])
+elif TARGET in target2classes:
+    targets[TARGET] = labels
 
-X_krn = X[:N_SAMPLES, :]
+print("Starting Gram-Schmidt...", end=" ")
+Q, _ = torch.linalg.qr(ensure_torch(H))
+Q = ensure_numpy(Q)
+torch.cuda.empty_cache()
+print("done.")
+
+print("Computing kernel matrix...", end=" ")
+X_krn = X[:N_KERNEL, :]
 kernel = KERNEL_TYPE(X_krn, kernel_width=KERNEL_WIDTH)
 K = ensure_torch(kernel.K)
-
-
-# START GRF
-##################
-
-print()
-
-grf_results = {
-    "coeffs": ExptTrace(["target"]),
-    "residual": ExptTrace(["target"]),
-}
-for target, ystar in targets.items():
-    ystar = ystar / np.linalg.norm(ystar)
-    print(f"Solving GRF coeffs for target {target}...", end=" ")
-    # coeffs, _, _ = grf(H, ystar)
-    # sorted_idx = np.argsort(-coeffs**2)
-    # coeffs, residual, H_norm = grf(H, ystar, idxs=sorted_idx)
-    coeffs, residual, H_norm = grf(H, ystar)
-    grf_results["coeffs"][target] = coeffs
-    grf_results["residual"][target] = residual
-    print("done.")
-
-grf_results = {k: v.serialize() for k, v in grf_results.items()}
-expt_fm.save(grf_results, "grf.pickle")
-# expt_fm.save(H, "H.npy")
-expt_fm.save(H_norm, "H_norm.npy")
-del H
+torch.cuda.empty_cache()
+print("done.")
 
 
 # START EXPERIMENT
@@ -237,42 +169,55 @@ del H
 print()
 
 def get_ntrials(ntrain):
+    if FEWER_TRIALS:
+        return max(1, min(20, N_KERNEL // ntrain))
     if ntrain < 100: return 50
-    elif ntrain < 2000: return 10
-    return max(1, N_SAMPLES // ntrain)
+    elif ntrain < 1000: return 20
+    return max(5, N_KERNEL // ntrain)
 
-ntest = 5_000 # DEBUG 10_000
-log_ntrain_max = np.log10((N_SAMPLES - ntest)/1.1)
-ntrains = np.logspace(1, log_ntrain_max, base=10, num=30).astype(int)
+ntrains = np.logspace(1, np.log10(N_TRAIN_MAX), base=10, num=30).astype(int)
 
-et_yhat = ExptTrace(["trial", "ntrain", "target"])
+et_mse = ExptTrace(["trial", "ntrain", "target"])
 for target, ystar in targets.items():
     print("Starting target: ", target)
-    ystar = ensure_torch(ystar[:N_SAMPLES])
-    print(f"ridge={RIDGE}, ntrains:", end=" ", flush=True)
+    ystar = ensure_torch(ystar[:N_KERNEL])
+    print(f"ntrains:", end=" ", flush=True)
     for ntrain in ntrains:
         print(f"{ntrain}", end=" ", flush=True)
-        for trial in range(get_ntrials(ntrain)):
-            (y_hat, _), _ = krr(K, ystar, ntrain, n_test=ntest, ridge=RIDGE, trial=trial)
-            et_yhat[trial, ntrain, target] = y_hat.cpu().numpy()
+        ntrials = get_ntrials(ntrain)
+        test_mse, _ = krr_loop(K, ystar, ntrain, N_TEST, ntrials, ridge=RIDGE)
+        for trial, mse in enumerate(test_mse):
+            et_mse[trial, ntrain, target] = mse
     print()
+torch.cuda.empty_cache()
 
-# print("diagonalizing kernel...", end=" ")
-# emp_eigvals, emp_eigvecs = kernel.eigendecomp()
+
+# CLEANUP
+##################
+
+print("diagonalizing kernel...", end=" ")
+emp_eigvals, emp_eigvecs = kernel.eigendecomp()
+print("done.")
+
+print("computing coeffs...", end=" ")
+coeffs = {}
+Q = ensure_torch(Q)
+for target, ystar in targets.items():
+    y = ensure_torch(ystar / np.linalg.norm(ystar))
+    v_emp = emp_eigvecs.T @ y[:N_KERNEL] / torch.linalg.norm(y[:N_KERNEL])
+    v_hat = Q.T @ y / torch.linalg.norm(y)
+    coeffs[target] = (ensure_numpy(v_hat), ensure_numpy(v_emp))
+print("done.")
+
 print("saving results...", end=" ")
-# expt_fm.save(ensure_numpy(emp_eigvecs), "emp_eigvecs.npy")
 expt_fm.save(targets, "targets.pickle")
-# iso_data_eigvals = torch.ones(len(data_eigvals)) / len(data_eigvals)
-# iso_eigvals, _ = generate_hea_monomials(iso_data_eigvals, P_MODES, eval_level_coeff)
+expt_fm.save(coeffs, "coeffs.pickle")
 result = {
-    "ridge": RIDGE,
     "monomials": [dict(m) for m in monomials],
     "d_eff": d_eff,
-    "n_test": ntest,
-    # "emp_eigvals": ensure_numpy(emp_eigvals),
-    "th_eigvals": hehe_eigvals,
-    # "iso_eigvals": ensure_numpy(iso_eigvals),
-    "y_hat": et_yhat.serialize()
+    "emp_eigvals": ensure_numpy(emp_eigvals),
+    "th_eigvals": hea_eigvals,
+    "mse": et_mse.serialize()
 }
 expt_fm.save(result, "result.pickle")
 torch.cuda.empty_cache()

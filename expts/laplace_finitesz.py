@@ -10,8 +10,8 @@ sys.path.append("../")
 from FileManager import FileManager
 from kernels import LaplaceKernel
 from feature_decomp import generate_fra_monomials
-from utils import ensure_torch, ensure_numpy
-from data import get_powerlaw, get_matrix_hermites
+from utils import ensure_torch, ensure_numpy, get_powerlaw
+from data import get_matrix_hermites
 
 
 ## sample values
