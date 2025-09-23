@@ -33,6 +33,56 @@ def krr(K, y, n_train, n_test, ridge=0, trial=None):
     return (y_hat_test, y_test), (y_hat_train, y_train)
 
 
+def krr_loop(K, y, n_train, n_test, ntrials, ridge=0):
+    
+    def shuffle_indices(n_tot, K, y):
+        slc = torch.randperm(n_tot)
+        K = K[slc[:, None], slc[None, :]]
+        y = y[slc]
+        return K, y
+    
+    n_tot = K.shape[0]
+    n_per_trial = n_train + n_test
+    assert n_per_trial <= n_tot
+    
+    cur_idx = 0
+    train_mses = []
+    test_mses = []
+    for _ in range(ntrials):
+        if cur_idx + n_per_trial > n_tot:
+            K, y = shuffle_indices(n_tot, K, y)
+            cur_idx = 0
+        end_idx_train = cur_idx + n_train
+        end_idx_test = cur_idx + n_per_trial
+        
+        K_train = K[cur_idx:end_idx_train, cur_idx:end_idx_train]
+        K_test = K[cur_idx:end_idx_test, cur_idx:end_idx_train]
+        y_train = y[cur_idx:end_idx_train]
+        y_test = y[end_idx_train:end_idx_test]
+
+        if ridge == 0:
+            alpha = torch.linalg.lstsq(K_train, y_train)
+        else:
+            eye = ensure_torch(torch.eye(n_train))
+            alpha = torch.linalg.lstsq(K_train + ridge * eye, y_train)
+
+        y_hat = K_test @ alpha.solution
+        y_hat_train = y_hat[:n_train]
+        y_hat_test = y_hat[n_train:]
+
+        train_mse = ((y_hat_train - y_train)**2).mean(axis=-1).item()
+        test_mse = ((y_hat_test - y_test)**2).mean(axis=-1).item()
+
+        train_mses.append(train_mse)
+        test_mses.append(test_mse)
+
+        cur_idx += n_per_trial
+
+    train_mses = np.array(train_mses)
+    test_mses = np.array(test_mses)
+    return test_mses, train_mses
+
+
 def estimate_kappa(kernel, n, ridge=0):
     K = kernel.K
     n_tot = K.shape[0]
@@ -358,15 +408,29 @@ class ReluNTK(Kernel):
 
         norms = torch.linalg.norm(self.X, dim=-1, keepdim=True)
         p = b_var + w_var * norms**2
-        normalizer = (p @ p.T).sqrt()
+        if kwargs.get("use_numpy", False):
+            p = ensure_numpy(p)
+            X = ensure_numpy(self.X)
+            normalizer = np.sqrt(p @ p.T)
 
-        first_layer_nngp = (w_var * self.X @ self.X.T) + b_var
-        theta = torch.acos((first_layer_nngp / normalizer).clip(-1, 1))
+            first_layer_nngp = (w_var * X @ X.T) + b_var
+            theta = np.acos((first_layer_nngp / normalizer).clip(-1, 1))
 
-        second_layer_nngp = (w_var * normalizer * (torch.sin(theta) + torch.cos(theta) * (np.pi - theta))) / (2*np.pi)
-        second_layer_ntk = (w_var * first_layer_nngp * (np.pi - theta)) / (2*np.pi)
-        self.K = second_layer_nngp + second_layer_ntk
+            second_layer_nngp = (w_var * normalizer * (np.sin(theta) + np.cos(theta) * (np.pi - theta))) / (2*np.pi)
+            second_layer_ntk = (w_var * first_layer_nngp * (np.pi - theta)) / (2*np.pi)
+        else:
+            normalizer = (p @ p.T).sqrt()
+
+            first_layer_nngp = (w_var * self.X @ self.X.T) + b_var
+            theta = torch.acos((first_layer_nngp / normalizer).clip(-1, 1))
+
+            second_layer_nngp = (w_var * normalizer * (torch.sin(theta) + torch.cos(theta) * (np.pi - theta))) / (2*np.pi)
+            second_layer_ntk = (w_var * first_layer_nngp * (np.pi - theta)) / (2*np.pi)
+        
+        K = second_layer_nngp + second_layer_ntk
+        self.K = ensure_torch(K)
         del normalizer, first_layer_nngp, theta, second_layer_nngp, second_layer_ntk
+        torch.cuda.empty_cache()
 
     @staticmethod
     def parse_kwargs(kwargs):
