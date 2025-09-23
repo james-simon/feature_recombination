@@ -27,7 +27,7 @@ class Monomial(dict):
         monostr = ""
         for idx, exp in sorted(self.items()):
             expstr = f"^{exp}" if exp > 1 else ""
-            monostr += f"x_{{{idx}}}{expstr}"
+            monostr += f"z_{{{idx}}}{expstr}"
         return f"${monostr}$"
 
 
@@ -67,8 +67,6 @@ def generate_hea_monomials(data_eigvals, num_monomials, eval_level_coeff, kmax=1
     for k in range(1, kmax+1):
         monomial = Monomial({0: k})
         hea_eigval = compute_hea_eigval(data_eigvals, monomial, eval_level_coeff)
-        if hea_eigval > first_hea_eigval:
-            break
         # Each entry in the priority queue is (-hea_eigval, Monomial({idx:exp, ...}))
         pq.append((-hea_eigval, monomial))
         pq_members.add(repr(monomial))
@@ -99,6 +97,35 @@ def generate_hea_monomials(data_eigvals, num_monomials, eval_level_coeff, kmax=1
                     pq_members.add(repr(next_monomial))
 
     return np.array(hea_eigvals), monomials
+
+
+def get_monomial_targets(monomials, hea_eigvals, n_markers=20):
+    target_monomials = [{0:1}, {10:1}, {100:1}, {190:1},
+                        {0:2}, {0:1,1:1}, {1:1, 3:1}, {16:1,20:1}, {20:1,30:1},
+                        {0:3}, {0:1, 1:1, 2:1}, {1:1, 3:1, 4:1}, {3:2, 5:1},
+                        {0:4}]
+    
+    monomial_idxs = set()
+    for tmon in target_monomials:
+        if tmon not in monomials:
+            print(f"Target {tmon} not in generated monomials. Skipping.")
+            continue
+        monomial_idxs.add(monomials.index(tmon))
+    assert len(monomial_idxs) > 0
+
+    # Add more modes: log-equidistant selection from hea_eigvals
+    num_degrees = 3
+    masked_eigvals = np.ma.masked_all((num_degrees, len(hea_eigvals)))
+    for idx, monomial in enumerate(monomials):
+        if 1 <= monomial.degree() <= num_degrees:
+            masked_eigvals[monomial.degree()-1, idx] = hea_eigvals[idx]
+    markers = np.logspace(np.log10(hea_eigvals[2_000]), np.log10(hea_eigvals[0]), n_markers)
+    for i, marker in enumerate(markers):
+        degree = i%num_degrees + 1
+        idx = int(np.argmin(np.abs(masked_eigvals[degree-1] - marker)))
+        if idx not in monomial_idxs:
+            monomial_idxs.add(idx)
+    return sorted(monomial_idxs)
 
 
 # DEPRECATED

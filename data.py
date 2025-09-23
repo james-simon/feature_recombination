@@ -3,14 +3,44 @@ import torch as torch
 import math
 from scipy.special import zeta
 
-from utils import ensure_numpy, ensure_torch
+import os
+from einops import reduce, rearrange
+
+from utils import ensure_numpy, ensure_torch, get_powerlaw
 
 
-def get_powerlaw(P, exp, offset=3, normalize=True):
-    pl = (offset+np.arange(P)) ** -exp
-    if normalize:
-        pl /= pl.sum()
-    return pl
+def get_binarized_dataset(dataset, classes, n_samples):
+    datapath = os.getenv("DATASETPATH")
+    if dataset == "cifar5m":
+        data_dir = os.path.join(datapath, "cifar5m")
+        raw_data = np.load(f"{data_dir}/part0.npz")
+        X, y = raw_data['X'], raw_data['Y']
+    elif dataset == "svhn":
+        data_dir = os.path.join(datapath, "svhn")
+        raw_data = np.load(f"{data_dir}/svhn_all.npz")
+        X, y = raw_data['X'], raw_data['y']
+    elif dataset == "imagenet32":
+        fn = os.path.join(datapath, "imagenet", f"imagenet32.npz")
+        data = np.load(fn)
+        X = data['data'][:n_samples].astype(float)
+        assert len(X) == n_samples
+        X = rearrange(X, 'n (c h w) -> n c h w', c=3, h=32, w=32)
+        return X, None
+    else:
+        raise ValueError(f"dataset {dataset} not supported")
+
+    if classes is None:
+        classes = [[0,1,2,3,4], [5,6,7,8,9]]
+    c0, c1 = classes
+    if dataset == "cifar5m":
+        X = rearrange(X, 'b h w c -> b c h w')
+    idxs = np.concatenate([np.flatnonzero(np.isin(y, c0))[:n_samples//2],
+                           np.flatnonzero(np.isin(y, c1))[:n_samples//2]], axis=0)
+    idxs = np.random.permutation(idxs)
+    X = X[idxs] / 255.0
+    assert X.shape[0] == n_samples, "not enough samples of specified classes"
+    y = -1 + 2*(np.isin(y[idxs], c1))
+    return X, y
 
 
 def get_hermite_polynomials():
@@ -38,23 +68,69 @@ def get_hermite_polynomials():
     }
 
 
-def get_matrix_hermites(X, monomials, previously_normalized=False):
+def compute_hermite_basis(X, monomials, is_X_PCAd=False):
     N, _ = X.shape
-    if not previously_normalized:
+    if not is_X_PCAd:
+        X = ensure_torch(X)
         U, _, _ = torch.linalg.svd(X, full_matrices=False)
-        X_norm = ensure_numpy(np.sqrt(N) * U)
-    else:
-        X_norm = ensure_numpy(X)
-    
+        X = np.sqrt(N) * U
+    X_PCA = ensure_numpy(X)
+
     hermites = get_hermite_polynomials()
     H = np.zeros((N, len(monomials)))
     for i, monomial in enumerate(monomials):
         h = np.ones(N) / np.sqrt(N)
         for d_i, exp in monomial.items():
             Z = np.sqrt(math.factorial(exp))
-            h *= hermites[exp](X_norm[:, d_i]) / Z
+            h *= hermites[exp](X_PCA[:, d_i]) / Z
         H[:, i] = h
     return H
+
+
+def preprocess(X, **kwargs):
+    """
+    Process image dataset. Returns vectorized (flattened) images.
+    
+    X (tensor): image dataset, shape (N, c, h, w)
+    kwargs:
+        "grayscale" (bool, False): If true, average over channels. Eliminates channel dim.
+        "center" (bool, False): If true, center image vector distribution.
+        "normalize" (bool, False): If true, make all image vectors unit norm.
+        "zca_strength" (float, 0): Flatten covariance spectrum according to S_new = S / sqrt(zca_strength * S^2 + 1)
+
+    returns: ndarray with shape (N, d)
+    """
+
+    if kwargs.get('grayscale', False):
+        X = reduce(X, 'N c h w -> N (h w)', 'mean')
+    else:
+        X = rearrange(X, 'N c h w -> N (c h w)')
+
+    if kwargs.get('center', False):
+        X_mean = reduce(X, 'N d -> d', 'mean')
+        X -= X_mean
+
+    if kwargs.get('normalize', False):
+        X /= torch.linalg.norm(X, axis=1, keepdims=True)
+
+    zca_strength = kwargs.get('zca_strength', 0)
+    if zca_strength:
+        U, S, Vt = torch.linalg.svd(X, full_matrices=False)
+        zca_strength /= torch.mean(S**2)
+        Sp = S / torch.sqrt(zca_strength * S**2 + 1)
+        Sp /= torch.linalg.norm(Sp)
+        X = U @ torch.diag(Sp) @ Vt
+
+    if kwargs.get('center', False):
+        X_mean = reduce(X, 'N d -> d', 'mean')
+        X -= X_mean
+
+    return X
+
+
+# for backwards compatibility
+def get_matrix_hermites(X, monomials, previously_normalized=False):
+    return compute_hermite_basis(X, monomials, is_X_PCAd=previously_normalized)
 
 
 def get_powerlaw_target(H, source_exp, offset=6, normalizeH=False, include_noise=False):
@@ -69,24 +145,15 @@ def get_powerlaw_target(H, source_exp, offset=6, normalizeH=False, include_noise
     # Generate random signs for coefficients
     signs = -1 + 2*np.random.randint(0, 2, size=squared_coeffs.shape)
     coeffs = np.sqrt(squared_coeffs) * signs.astype(float)
-    coeffs = ensure_torch(coeffs)
-    # y = H @ coeffs
-    chunk_size = 1_000
-    y = ensure_torch(np.zeros(M))
-    for start in range(0, P, chunk_size):
-        end = min(start + chunk_size, P)
-        H_chunk = ensure_torch(H[:, start:end])
-        y += H_chunk @ coeffs[start:end]
-        del H_chunk
-        torch.cuda.empty_cache()
+    y = H @ coeffs
     if include_noise:
         totalsum = zeta(source_exp, offset)  # sum_{k=offset  }^infty k^{-exp}
         tailsum = zeta(source_exp, offset+P) # sum_{k=offset+P}^infty k^{-exp}
         noise_var = tailsum/(totalsum - tailsum)
         noise = np.random.normal(0, np.sqrt(noise_var / M), y.shape)
         # snr = y @ y / (noise @ noise)
-        y /= torch.linalg.norm(y)
-        y += ensure_torch(noise)
+        y /= np.linalg.norm(y)
+        y += noise
     # we expect size(y_i) ~ 1
-    y = np.sqrt(M) * y / torch.linalg.norm(y)
-    return ensure_numpy(y)
+    y = np.sqrt(M) * y / np.linalg.norm(y)
+    return y
