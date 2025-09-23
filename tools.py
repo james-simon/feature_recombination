@@ -95,22 +95,23 @@ def estimate_beta(K, y, n_trains, n_test=5_000, n_tailstart=800):
     return beta, coeff, mse_trials
 
 
-def grf(H, y, chunk_size=1_000, idxs=None):
+def grf(H, y, chunk_size=10_000, idxs=None):
     _, P = H.shape
     if idxs is None:
         idxs = np.arange(P)
     vhat = ensure_torch(np.zeros(P))
     H_norm = ensure_torch(np.zeros(P))
     residual = ensure_torch(y, clone=True)
+    residual /= torch.linalg.norm(residual)
     for start in range(0, P, chunk_size):
         end = min(start + chunk_size, P)
         idx_chunk = idxs[start:end]
         H_chunk = ensure_torch(H[:, idx_chunk])
         H_norm[idx_chunk] = torch.linalg.norm(H_chunk, axis=0)
         for i, t in enumerate(idx_chunk):
-            phi_t = H_chunk[:, i]
-            vhat[t] = torch.dot(phi_t, residual) / H_norm[t]**2
-            residual -= vhat[t] * phi_t
+            h_t = H_chunk[:, i]
+            vhat[t] = torch.dot(h_t, residual) / H_norm[t]
+            residual -= vhat[t] * h_t / H_norm[t]
         del H_chunk
         torch.cuda.empty_cache()
     vhat, residual, H_norm = map(ensure_numpy, (vhat, residual, H_norm))

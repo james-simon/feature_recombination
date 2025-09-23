@@ -23,3 +23,10 @@ def ensure_torch(x, dtype=torch.float32, clone=False):
     if clone and result is x:
         return result.clone()
     return result
+
+
+def get_powerlaw(P, exp, offset=3, normalize=True):
+    pl = (offset+np.arange(P)) ** -exp
+    if normalize:
+        pl /= pl.sum()
+    return pl
