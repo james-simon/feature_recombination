@@ -119,6 +119,8 @@ def train_network(model, batch_function, lr=1e-2, max_iter=int(1e3), loss_checkp
     if not(only_thresholds):
         tr_losses = np.empty(max_iter, dtype=float)
         te_losses = np.empty(max_iter, dtype=float)
+    else:
+        tr_losses = te_losses = None
     ema = None
     pointer = 0   
     X_tr_not_provided = X_tr is None
