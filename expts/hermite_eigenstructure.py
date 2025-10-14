@@ -10,8 +10,8 @@ sys.path.append("../")
 from FileManager import FileManager
 from kernels import GaussianKernel, LaplaceKernel, ReluNTK
 from feature_decomp import generate_hea_monomials
-from utils import ensure_torch, ensure_numpy, get_powerlaw
-from data import get_binarized_dataset, preprocess, compute_hermite_basis
+from utils import ensure_torch, ensure_numpy
+from data import get_binarized_dataset, preprocess, compute_hermite_basis, get_powerlaw
 
 
 EXPT_NAME = "hermite-eigenstructure-check"

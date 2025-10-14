@@ -11,8 +11,8 @@ from ExptTrace import ExptTrace
 from FileManager import FileManager
 from kernels import GaussianKernel, LaplaceKernel, ReluNTK, krr_loop
 from feature_decomp import generate_hea_monomials, get_monomial_targets
-from utils import ensure_torch, ensure_numpy, get_powerlaw
-from data import get_binarized_dataset, preprocess, compute_hermite_basis
+from utils import ensure_torch, ensure_numpy
+from data import get_binarized_dataset, preprocess, compute_hermite_basis, get_powerlaw
 from expt_demux import expt_demux
 
 

@@ -1,29 +1,10 @@
 import numpy as np
 import torch
-from tqdm import tqdm
 
-from ExptTrace import ExptTrace
-
-from feature_decomp import generate_fra_monomials
-from data import get_matrix_hermites
 from kernels import krr
 from utils import ensure_numpy, ensure_torch
 
 
-def get_standard_tools(X, kerneltype, kernel_width, top_mode_idx=3000, data_eigvals=None, kmax=20):
-    
-    if data_eigvals is None:
-        N, _ = X.shape
-        S = torch.linalg.svdvals(X)
-        data_eigvals = S**2 / (S**2).sum()
-
-    kernel = kerneltype(X, kernel_width=kernel_width)
-    eval_level_coeff = kerneltype.get_level_coeff_fn(kernel_width=kernel_width, data_eigvals=data_eigvals)
-
-    fra_eigvals, monomials = generate_fra_monomials(data_eigvals, top_mode_idx, eval_level_coeff, kmax=kmax)
-    H = ensure_torch(get_matrix_hermites(X, monomials))
-
-    return monomials, kernel, H, fra_eigvals, data_eigvals
 
 def get_test_mses(K, y, num_estimators=20, n_test=100, n_trials=20, **kwargs):
     sizes = kwargs.get('sizes', None)
@@ -57,44 +38,32 @@ def find_beta(K, y, num_estimators=20, n_test=100, n_trials=20, **kwargs):
 
     return beta, intercept, sizes, test_mses
 
+## same as fine_beta in essence
+def estimate_beta(K, y, n_trains, n_test=5_000, ridge=1e-3, n_trials=None):
 
-def estimate_beta(K, y, n_trains, n_test=5_000, n_tailstart=800):
+    n_trains = np.asarray(n_trains)
+    if n_trials is None:
+        try:
+            n_trials = trial_count_fn(int(n_trains.max()))
+        except NameError:
+            n_trials = 10
+
+    beta, intercept, sizes, test_mses = find_beta(K, y, num_estimators=len(n_trains), n_test=n_test,
+                                                  n_trials=int(n_trials), sizes=n_trains, ridge=ridge)
+
+    coeff = 10.0 ** float(intercept)
+    return float(beta), coeff, test_mses
+
+def trial_count_fn(n):
+    if n <= 50:
+        return 20
+    elif n <= 500:
+        return 10
+    elif n <= 5000:
+        return 3
+    else:
+        return 1
     
-    def get_ntrials(ntrain):
-        if ntrain < 100: return 20
-        elif ntrain < 1000: return 10
-        elif ntrain < 10000: return 5
-        else: return 1
-    
-    assert n_trains.dtype == int
-    assert n_trains.min() > 0
-    assert n_trains.max() + n_test <= K.shape[0]
-    K = ensure_torch(K)
-    y = ensure_torch(y)
-    var_axes = ["trial", "ntrain"]
-    et_yhat = ExptTrace(var_axes)
-    for n_train in tqdm(n_trains):
-        for trial in range(get_ntrials(n_train)):
-            (y_hat, _), _ = krr(K, y, n_train, n_test=n_test, ridge=1e-3)
-            et_yhat[trial, n_train] = y_hat.cpu().numpy()
-        torch.cuda.empty_cache()
-
-    yhat = et_yhat[:, :]
-    ystar = ensure_numpy(y[-n_test:])
-    mse_trials = ((yhat - ystar)**2).mean(axis=-1)
-    mse = mse_trials.mean(axis=0)
-    
-    # Fit powerlaw to the tail of the curve (n >= n_tailstart)
-    tail_mask = n_trains >= n_tailstart
-    assert tail_mask.sum() >= 2
-    log_n = np.log(n_trains[tail_mask])
-    log_mse = np.log(mse[tail_mask])
-    poly = np.polynomial.Polynomial.fit(log_n, log_mse, deg=1)
-    intercept, slope = poly.convert().coef
-    coeff, beta = np.e**intercept, -slope + 1
-    return beta, coeff, mse_trials
-
-
 def grf(H, y, chunk_size=10_000, idxs=None):
     _, P = H.shape
     if idxs is None:

@@ -6,7 +6,14 @@ from scipy.special import zeta
 import os
 from einops import reduce, rearrange
 
-from utils import ensure_numpy, ensure_torch, get_powerlaw
+from utils import ensure_numpy, ensure_torch
+
+
+def get_powerlaw(P, exp, offset=3, normalize=True):
+    pl = (offset+np.arange(P)) ** -exp
+    if normalize:
+        pl /= pl.sum()
+    return pl
 
 
 def get_binarized_dataset(dataset, classes, n_samples):
@@ -127,8 +134,41 @@ def preprocess(X, **kwargs):
 
     return X
 
+# for mlps
+
+def get_new_polynomial_data(lambdas, Vt, monomials, dim, N, data_eigvals, N_original,
+                            new_X_fn=notebook_fns.get_synthetic_X, coeffs=1, gen=None):
+    new_X_args = dict(d=dim, N=N, data_eigvals=data_eigvals, gen=gen)
+    X_new, _ = new_X_fn(**new_X_args)
+    pca_x = X_new @ Vt.T @ torch.diag(lambdas**(-1.)) * N_original**(0.5)
+    y_new = coeffs*get_matrix_hermites(pca_x, monomials, previously_normalized=True)*N**(0.5)
+    if y_new.ndim == 2:
+        y_new = y_new.sum(axis=1)/y_new.shape[1]
+    return X_new, y_new
+
+
+def polynomial_batch_fn(lambdas, Vt, monomials, bsz, data_eigvals, N,
+                  X=None, y=None, data_creation_fn=get_new_polynomial_data, gen=None):
+    lambdas, Vt, data_eigvals = map(ensure_torch, (lambdas, Vt, data_eigvals))
+    dim = len(data_eigvals)
+    
+    def batch_fn(step: int, X=X, y=y):
+        if (X is not None) and (y is not None):
+            X_fixed = ensure_torch(X)
+            y_fixed = ensure_torch(y)
+            return X_fixed, y_fixed
+        with torch.no_grad():
+            dcf_args = dict(lambdas=lambdas, Vt=Vt, monomials=monomials, dim=dim,
+                            N=bsz, data_eigvals=data_eigvals, N_original=N, gen=gen)
+            X, y = data_creation_fn(**dcf_args)
+        X, y = map(ensure_torch, (X, y))
+        return X, y
+    
+    return batch_fn
+
 
 # for backwards compatibility
+
 def get_matrix_hermites(X, monomials, previously_normalized=False):
     return compute_hermite_basis(X, monomials, is_X_PCAd=previously_normalized)
 

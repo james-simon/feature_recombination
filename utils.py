@@ -102,10 +102,3 @@ def seed_everything(seed_int, device_id=0, make_generators=True, deterministic=F
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
     return (torch.Generator(device=f"cuda:{device_id}").manual_seed(seed_int), np.random.default_rng(seed_int)) if make_generators else None
-
-
-def get_powerlaw(P, exp, offset=3, normalize=True):
-    pl = (offset+np.arange(P)) ** -exp
-    if normalize:
-        pl /= pl.sum()
-    return pl

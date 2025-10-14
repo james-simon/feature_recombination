@@ -9,9 +9,9 @@ sys.path.append("../")
 
 from FileManager import FileManager
 from kernels import LaplaceKernel
-from feature_decomp import generate_fra_monomials
-from utils import ensure_torch, ensure_numpy, get_powerlaw
-from data import get_matrix_hermites
+from feature_decomp import generate_hea_monomials
+from utils import ensure_torch, ensure_numpy
+from data import get_matrix_hermites, get_powerlaw
 
 
 ## sample values
@@ -74,7 +74,7 @@ print(f"d_eff: {d_eff:.2f}", end="\n")
 
 eval_level_coeff = LaplaceKernel.get_level_coeff_fn(data_eigvals=data_eigvals,
                                                  kernel_width=KERNEL_WIDTH)
-hehe_eigvals, monomials = generate_fra_monomials(data_eigvals, P_MODES, eval_level_coeff)
+hehe_eigvals, monomials = generate_hea_monomials(data_eigvals, P_MODES, eval_level_coeff)
 
 kernel_sizes = np.logspace(1, np.log10(N_SAMPLES), num=10).astype(int)
 emp_eigvals_n = {}

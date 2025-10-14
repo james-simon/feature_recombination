@@ -434,9 +434,9 @@ class ReluNTK(Kernel):
 
     @staticmethod
     def parse_kwargs(kwargs):
-        if "weight_variance" in kwargs and "bias_variance" in kwargs:
-            w_var = kwargs["weight_variance"]
-            b_var = kwargs["bias_variance"]
+        if ("weight_variance" in kwargs and "bias_variance" in kwargs) or ("w_var" in kwargs and "b_var" in kwargs):
+            w_var = kwargs.get("weight_variance", kwargs.get("w_var", 1))
+            b_var = kwargs.get("bias_variance",   kwargs.get("b_var", 1))
         else:
             k_width = kwargs.get("kernel_width", 1.0)
             w_var = np.sqrt((2*np.pi)/(1 + 2*np.pi*k_width))

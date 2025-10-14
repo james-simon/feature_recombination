@@ -18,17 +18,102 @@ class Monomial(dict):
             return 0
         return sum(self.values())
 
+    def max_degree(self):
+        if len(self) == 0:
+            return 0
+        return max(self.values())
+
     def copy(self):
         return Monomial(super().copy())
 
-    def __repr__(self):
+    def __str__(self) -> str:
         if self.degree() == 0:
             return "1"
         monostr = ""
-        for idx, exp in sorted(self.items()):
+        for idx, exp in self.items():
             expstr = f"^{exp}" if exp > 1 else ""
-            monostr += f"z_{{{idx}}}{expstr}"
+            monostr += f"x_{{{idx}}}{expstr}"
         return f"${monostr}$"
+
+    def __repr__(self):
+        return self.__str__()
+
+    @classmethod
+    def from_repr(cls, s: str) -> "Monomial":
+        """
+        Parse strings like '$x_{0}^2x_{3}x_{10}^5$' or '$1$' into a Monomial.
+        No regex used. Strict about format produced by __repr__/__str__.
+        """
+        if not isinstance(s, str):
+            raise TypeError("from_repr expects a string")
+
+        s = s.strip()
+        if s.startswith("$") and s.endswith("$"):
+            s = s[1:-1]
+        s = s.replace(" ", "")
+
+        if s in {"", "1"}:
+            return cls()
+
+        i, n = 0, len(s)
+        out = {}
+
+        def expect(ch: str):
+            nonlocal i
+            if i >= n or s[i] != ch:
+                raise ValueError(f"Expected '{ch}' at pos {i} in {s!r}")
+            i += 1
+
+        def read_digits() -> int:
+            nonlocal i
+            start = i
+            while i < n and s[i].isdigit():
+                i += 1
+            if start == i:
+                raise ValueError(f"Expected digits at pos {start} in {s!r}")
+            return int(s[start:i])
+
+        while i < n:
+            # x_{idx}
+            expect('x')
+            expect('_')
+            expect('{')
+            idx = read_digits()
+            expect('}')
+
+            # optional ^exp
+            exp = 1
+            if i < n and s[i] == '^':
+                i += 1
+                exp = read_digits()
+
+            out[idx] = out.get(idx, 0) + exp
+
+        return cls(out)
+    
+    def basis_factors(self, include_one: bool = False, canonical: bool = True):
+        """
+        Return a list of unit-degree Monomials whose product equals this monomial.
+        Example: Monomial({0: 2, 3: 1}) -> [Monomial({0:1}), Monomial({0:1}), Monomial({3:1})]
+        If degree == 0, returns [] unless include_one=True (then [Monomial({})]).
+        If canonical=True, factors are ordered by increasing variable index.
+        """
+        if self.degree() == 0:
+            return [Monomial({})] if include_one else []
+
+        items = sorted(self.items()) if canonical else self.items()
+        factors = []
+        for idx, exp in items:
+            for _ in range(int(exp)):
+                factors.append(Monomial({idx: 1}))
+        return factors
+    
+    def basis(self, canonical: bool = True) -> dict:
+        if self.degree() == 0:
+            return {}
+
+        items = sorted(self.items()) if canonical else self.items()
+        return {idx: int(exp) for idx, exp in items}
 
 
 def compute_hea_eigval(data_eigvals, monomial, eval_level_coeff):
@@ -128,83 +213,16 @@ def get_monomial_targets(monomials, hea_eigvals, n_markers=20):
     return sorted(monomial_idxs)
 
 
-# DEPRECATED
-def generate_fra_monomials(data_covar_eigvals, num_monomials, eval_level_coeff, kmax=10):
-    """
-    Generates FRA eigenvalues and monomials in canonical learning order.
-
-    Args:
-        data_covar_eigvals (iterable): data covariance eigenvalues
-        num_monomials (int): Number of monomials to generate.
-        eval_level_coeff (function): Function to evaluate kernel level coefficients.
-        kmax (int): Search monomials up to order k
-
-    Returns:
-        - fra_eigvals (np.ndarray): Array of FRA eigenvalues.
-        - monomials (list): List of generated monomials.
-    """
-    try:
-        num_monomials = abs(int(num_monomials))
-    except Exception as e:
-        raise ValueError(f"type(num_monomials) must be int, not {type(num_monomials)}") from e
-    assert num_monomials >= 1
-    data_covar_eigvals = ensure_numpy(data_covar_eigvals)
-    d = len(data_covar_eigvals)
-
-    monomials = [Monomial({})]
-    fra_eigvals = [compute_hea_eigval(data_covar_eigvals, monomials[0], eval_level_coeff)]
-    # Each entry in the priority queue is (-hea_eigval, Monomial({idx:exp, ...}))
-    pq = [(-compute_hea_eigval(data_covar_eigvals, Monomial({0:1}), eval_level_coeff), Monomial({0:1}))]
-    heapq.heapify(pq)
-    # only show tqdm bar in console
-    for _ in tqdm(range(num_monomials-1), initial=1, desc="Generating monomials", disable=None):
-        if not pq:
-            return np.array(fra_eigvals), monomials
-        neg_fra_eigval, monomial = heapq.heappop(pq)
-        fra_eigvals.append(-neg_fra_eigval)
-        monomials.append(monomial)
-
-        last_idx = max(monomial.keys())
-        if last_idx + 1 < d:
-            left_monomial = monomial.copy()
-            left_monomial[last_idx] -= 1
-            if left_monomial[last_idx] == 0:
-                del left_monomial[last_idx]
-            left_monomial[last_idx + 1] = left_monomial.get(last_idx + 1, 0) + 1
-
-            fra_eigval = compute_hea_eigval(data_covar_eigvals, left_monomial, eval_level_coeff)
-            heapq.heappush(pq, (-fra_eigval, left_monomial))
-
-        if monomial.degree() < kmax:
-            right_monomial = monomial.copy()
-            right_monomial[last_idx] += 1
-            if eval_level_coeff(right_monomial.degree()) < 1e-12:
-                right_monomial[last_idx] += 1
-            if right_monomial.degree() > kmax:
-                continue
-            fra_eigval = compute_hea_eigval(data_covar_eigvals, right_monomial, eval_level_coeff)
-            heapq.heappush(pq, (-fra_eigval, right_monomial))
-
-    return np.array(fra_eigvals), monomials
-
-
-def fra_terms_from_monomials(monomials, data_eigvals, eval_level_coeff):
-    """
-    Computes the eigenvalues for a list of monomials.
-
-    Args:
-        monomials (list): List of Monomial objects.
-        data_eigvals (torch.Tensor): Eigenvalues of the covariance matrix.
-        eval_level_coeff (function): Function to evaluate level coefficients.
-
-    Returns:
-        np.ndarray: Array of eigenvalues corresponding to the monomials.
-    """
-    fra_eigvals = np.zeros(len(monomials))
-    for i, monomial in enumerate(monomials):
-        fra_eigvals[i] = compute_hea_eigval(data_eigvals, monomial, eval_level_coeff)
-    return fra_eigvals
-
-
-def lookup_monomial_idx(monomials, monomial):
-    return next((i for i, m in enumerate(monomials) if m == monomial), None)
+def group_by_deg_max(monomials, stop_at_degree=None, assume_sorted=False):
+    groups = {}
+    for i, m in enumerate(monomials):
+        deg = m.degree()
+        if stop_at_degree is not None and deg > stop_at_degree:
+            if assume_sorted:
+                break
+            continue
+        key = (deg, m.max_degree())
+        if key not in groups:
+            groups[key] = []
+        groups[key].append((i, m))
+    return groups
