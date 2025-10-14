@@ -129,7 +129,7 @@ def train_network(model, batch_function, lr=1e-2, max_iter=int(1e3), loss_checkp
     
         opt.zero_grad()
         out = model(X_tr)
-        loss = loss_fn(out, y_tr)
+        loss = loss_fn(out, y_tr.squeeze())
         loss.backward()
         opt.step()
 
@@ -139,7 +139,7 @@ def train_network(model, batch_function, lr=1e-2, max_iter=int(1e3), loss_checkp
         else:
             with torch.no_grad():
                 out = model(X_te)
-                loss = loss_fn(out, y_te)
+                loss = loss_fn(out, y_te.squeeze())
                 te_loss_val = float(loss.item())
 
         # initialize thresholds & loss trace baseline at first step
@@ -157,6 +157,9 @@ def train_network(model, batch_function, lr=1e-2, max_iter=int(1e3), loss_checkp
         if not(only_thresholds):
             tr_losses[i] = ema_tr
             te_losses[i] = ema_te
+
+        if verbose:
+            print(f"Step {i}: ema train loss {ema_tr}, ema test loss {ema_te}")
 
         #if a plateauchecker exists, check against it
         if stopper is not None:
