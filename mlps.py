@@ -130,7 +130,7 @@ def train_network(model, batch_function, lr=1e-2, max_iter=int(1e3), loss_checkp
         X_tr, y_tr = batch_function(i)
     
         opt.zero_grad()
-        out = model(X_tr)
+        out = model(X_tr).squeeze()
         loss = loss_fn(out, y_tr.squeeze())
         loss.backward()
         opt.step()
@@ -140,7 +140,7 @@ def train_network(model, batch_function, lr=1e-2, max_iter=int(1e3), loss_checkp
             te_loss_val = tr_loss_val
         else:
             with torch.no_grad():
-                out = model(X_te)
+                out = model(X_te).squeeze()
                 loss = loss_fn(out, y_te.squeeze())
                 te_loss_val = float(loss.item())
 
