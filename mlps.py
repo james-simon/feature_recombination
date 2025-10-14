@@ -74,7 +74,7 @@ class MLP(nn.Module):
 
 def train_network(model, batch_function, lr=1e-2, max_iter=int(1e3), loss_checkpoints=None, percent_thresholds=None,
                   gamma=1., ema_smoother=0.0, X_tr=None, y_tr=None, X_te=None, y_te=None, stopper=None, only_thresholds=False,
-                  **kwargs):
+                  verbose=False, **kwargs):
     """
     Returns:
         model, losses, timekeys
@@ -84,6 +84,17 @@ def train_network(model, batch_function, lr=1e-2, max_iter=int(1e3), loss_checkp
     - If ABSOLUTE mode, thresholds are raw absolutes and the comparison metric is raw loss.
     - If only_thresholds is True, only returns the timekeys and not the full loss curves.
     """
+
+    def return_statement(model, ema_tr, ema_te, timekeys, tr_losses=None, te_losses=None):
+        if only_thresholds:
+            return {"model": model, "train_losses": ema_tr, "test_losses": ema_te, "timekeys": timekeys}
+        return {"model": model, "train_losses": tr_losses, "test_losses": te_losses, "timekeys": timekeys}
+
+    def fill_losses(tr_losses, te_losses, i):
+        tr_losses[i:] = tr_losses[i]
+        te_losses[i:] = te_losses[i]
+        return tr_losses, te_losses
+    
     #checking if losses are absolute or relative
     has_abs = (loss_checkpoints is not None) and len(loss_checkpoints) > 0
     is_relative = (percent_thresholds is not None) and len(percent_thresholds) > 0
@@ -123,11 +134,10 @@ def train_network(model, batch_function, lr=1e-2, max_iter=int(1e3), loss_checkp
         opt.step()
 
         tr_loss_val = float(loss.item())
-        if X_tr_not_provided: #refactor since X_tr keeps getting defined
+        if X_tr_not_provided:
             te_loss_val = tr_loss_val
         else:
             with torch.no_grad():
-                # X_te, y_te = map(ensure_torch, (X_te, y_te))
                 out = model(X_te)
                 loss = loss_fn(out, y_te)
                 te_loss_val = float(loss.item())
@@ -140,8 +150,7 @@ def train_network(model, batch_function, lr=1e-2, max_iter=int(1e3), loss_checkp
                 thresholds *= tr_loss_val
             # prefill losses after init val calculated
             if not(only_thresholds):
-                tr_losses[:] = tr_loss_val
-                te_losses[:] = te_loss_val
+                tr_losses, te_losses=fill_losses(tr_losses, te_losses, i)
 
         ema_tr = (ema_smoother * ema_tr + (1.0 - ema_smoother) * tr_loss_val)
         ema_te = (ema_smoother * ema_te + (1.0 - ema_smoother) * te_loss_val)
@@ -149,30 +158,25 @@ def train_network(model, batch_function, lr=1e-2, max_iter=int(1e3), loss_checkp
             tr_losses[i] = ema_tr
             te_losses[i] = ema_te
 
+        #if a plateauchecker exists, check against it
         if stopper is not None:
             stop, _ = stopper.update(i, te_loss_val)
-            if stop and not only_thresholds:
-                tr_losses[i:] = tr_losses[i]
-                te_losses[i:] = te_losses[i]
-                return {"model": model, "train_losses": tr_losses, "test_losses": te_losses, "timekeys": timekeys}
-            elif stop:
-                return {"model": model, "train_losses": ema_tr, "test_losses": ema_te, "timekeys": timekeys}
+            if not(only_thresholds):
+                tr_losses, te_losses=fill_losses(tr_losses, te_losses, i)
+            if stop:
+                return return_statement(model, ema_tr, ema_te, timekeys, tr_losses, te_losses)
+        # if a threshold is hit, update pointer
         while pointer < len(thresholds) and ema_tr < thresholds[pointer]:
             timekeys[pointer] = i
             if not(only_thresholds):
-                tr_losses[i:] = tr_losses[i]
-                te_losses[i:] = te_losses[i]
+                tr_losses, te_losses=fill_losses(tr_losses, te_losses, i)
             pointer += 1
 
         # early exit if all thresholds crossed
         if pointer == len(thresholds):
-            if only_thresholds:
-                return {"model": model, "train_losses": ema_tr, "test_losses": ema_te, "timekeys": timekeys}
-            return {"model": model, "train_losses": tr_losses, "test_losses": te_losses, "timekeys": timekeys}
+            return return_statement(model, ema_tr, ema_te, timekeys, tr_losses, te_losses)
 
-    if only_thresholds:
-        return {"model": model, "train_losses": ema_tr, "test_losses": ema_te, "timekeys": timekeys}
-    return {"model": model, "train_losses": tr_losses, "test_losses": te_losses, "timekeys": timekeys}
+    return return_statement(model, ema_tr, ema_te, timekeys, tr_losses, te_losses)
 
 
 # for checking when training has plateaued; discard if we want the full training run

@@ -22,18 +22,6 @@ def get_synthetic_X(d=500, N=15000, offset=3, alpha=1.5, data_eigvals = None, ge
     X = ensure_torch(torch.normal(0, 1, (N, d), generator=gen, device=data_eigvals.device)) * torch.sqrt(data_eigvals)
     return X, data_eigvals
 
-def get_online_synthetic_data(lambdas, Vt, monomials, dim, bsz, data_eigvals, N, gen=None):
-    """
-    Used for experiments where the number of samples needed is greater than can be stored;
-    primarily for training MLPs.
-
-    Requires some global eigenfunctions to have already been defined
-    """
-    X_new, _ = get_synthetic_X(d=dim, N=N, offset=None, alpha=None, data_eigvals=data_eigvals, gen=gen)
-    pca_x = X_new @ Vt.T @ torch.diag(lambdas**(-1.)) * N**(0.5)
-    y_new = get_matrix_hermites(pca_x, monomials, previously_normalized=True)*bsz**(0.5)
-    return X_new, y_new
-
 def get_matrix_hermites(X, monomials, previously_normalized=False):
     N, _ = X.shape
     if not previously_normalized:
@@ -103,12 +91,6 @@ def get_powerlaw_target(H, source_exp, offset=6, normalizeH=True, include_noise=
     y = np.sqrt(N) * y / torch.linalg.norm(y)
     return y
 
-def get_v_true(H, offset, beta, **kwargs):
-    """
-    Generates true underlying eigencoefficients
-    """
-    return get_powerlaw(H.shape[1], beta/2, offset=offset, normalize=True)
-
 def get_synthetic_dataset(X=None, data_eigvals=None, d=500, N=15000, offset=3, alpha=1.5, cutoff_mode=10000,
                           noise_size=0.1, yoffset=3, beta=1.2, normalized=True, gen=None, **kwargs):
     """
@@ -141,39 +123,33 @@ def get_all_targets(target_monomials, monomials, H):
     return y_all, locs
 
 
-def get_new_monomial_data(lambdas, Vt, monomials, dim, N, data_eigvals, N_original, gen=None):
-    X_new, _ = get_synthetic_X(d=dim, N=N, offset=None, alpha=None, data_eigvals=data_eigvals, gen=gen)
+def get_new_polynomial_data(lambdas, Vt, monomials, dim, N, data_eigvals, N_original,
+                            new_X_fn=get_synthetic_X, coeffs=1, gen=None):
+    new_X_args = dict(d=dim, N=N, data_eigvals=data_eigvals, gen=gen)
+    X_new, _ = new_X_fn(**new_X_args)
     pca_x = X_new @ Vt.T @ torch.diag(lambdas**(-1.)) * N_original**(0.5)
-    return X_new, get_matrix_hermites(pca_x, monomials, previously_normalized=True)*N**(0.5)
+    y_new = coeffs*get_matrix_hermites(pca_x, monomials, previously_normalized=True)*N**(0.5)
+    if y_new.ndim == 2:
+        y_new = y_new.sum(axis=1)/y_new.shape[1]
+    return X_new, y_new
 
 
-def monomial_batch_fn(lambdas, Vt, monomial, dim, bsz, data_eigvals, N,
-                  X=None, y=None, gen=None):
+def polynomial_batch_fn(lambdas, Vt, monomials, bsz, data_eigvals, N,
+                  X=None, y=None, data_creation_fn=get_new_polynomial_data, gen=None):
     lambdas, Vt, data_eigvals = map(ensure_torch, (lambdas, Vt, data_eigvals))
-    if (X is not None) and (y is not None):
-        X_fixed = ensure_torch(X)
-        y_fixed = ensure_torch(y)
-        return lambda step: (X_fixed, y_fixed)
+    dim = len(data_eigvals)
+    
     
     def batch_fn(step: int):
+        if (X is not None) and (y is not None):
+            X_fixed = ensure_torch(X)
+            y_fixed = ensure_torch(y)
+            return X_fixed, y_fixed
         with torch.no_grad():
-            X, y = get_new_monomial_data(lambdas, Vt, monomial, dim, bsz, data_eigvals, N, gen=gen)
+            dcf_args = dict(lambdas=lambdas, Vt=Vt, monomials=monomials, dim=dim,
+                            N=bsz, data_eigvals=data_eigvals, N_original=N, gen=gen)
+            X, y = data_creation_fn(**dcf_args)
         X, y = map(ensure_torch, (X, y))
         return X, y
     
-    return batch_fn
-
-def powerlaw_batch_fn(H,source_exp,  X=None, y=None, device=None):
-    if (X is not None) and (y is not None):
-        X_fixed = ensure_torch(X)
-        y_fixed = ensure_torch(y)
-        return lambda step: (X_fixed, y_fixed)
-
-    def batch_fn(step: int): #not implemented yet
-        with torch.no_grad():
-            X = H
-            y = get_powerlaw_target(H, source_exp, offset=6, normalizeH=True, include_noise=False)
-        X, y = map(ensure_torch, (X, y))
-        return X, y
-
     return batch_fn
