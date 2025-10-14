@@ -135,7 +135,6 @@ def preprocess(X, **kwargs):
     return X
 
 # for mlps
-
 def get_new_polynomial_data(lambdas, Vt, monomials, dim, N, data_eigvals, N_original,
                             new_X_fn=notebook_fns.get_synthetic_X, coeffs=1, gen=None):
     new_X_args = dict(d=dim, N=N, data_eigvals=data_eigvals, gen=gen)
