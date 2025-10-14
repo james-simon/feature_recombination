@@ -140,7 +140,7 @@ def polynomial_batch_fn(lambdas, Vt, monomials, bsz, data_eigvals, N,
     dim = len(data_eigvals)
     
     
-    def batch_fn(step: int):
+    def batch_fn(step: int, X=X, y=y):
         if (X is not None) and (y is not None):
             X_fixed = ensure_torch(X)
             y_fixed = ensure_torch(y)
