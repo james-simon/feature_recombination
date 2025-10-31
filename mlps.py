@@ -124,7 +124,7 @@ def train_network(model, batch_function, lr=1e-2, max_iter=int(1e3), loss_checkp
     X_tr_not_provided = X_tr is None
 
     # training loop 
-    for i in range(max_iter):
+    for i in range(int(max_iter)):
         X_tr, y_tr = batch_function(i)
     
         opt.zero_grad()

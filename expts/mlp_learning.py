@@ -22,66 +22,61 @@ from tools import trial_count_fn
 from ExptTrace import ExptTrace
 from FileManager import FileManager
 
-## --- Experiment parameters ---
+import argparse
+from pathlib import Path
 
-EXPT_NAME = "mlp-learning-curves"
-N_TRAIN = 4_000
-N_TEST = 10_000
-N_TOT = N_TEST+N_TRAIN
-NS = np.logspace(1, 3, 20, dtype=int)
-DATASET = "synthetic"
-kerneltype = ReluNTK
-TARGET_FUNCTION_TYPE = "monomial" # just powerlaw for now
-ONLYTHRESHOLDS = True # if True, only record last loss instead of full curve
+## ------- ARG PARSING --------
 
-SEED = 42
+def int_from_any(x: str) -> int:
+    """Accept '10000', '1e4', '5.0' → int."""
+    try:
+        v = int(float(x))
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(f"Invalid int: {x}") from e
+    return v
 
-# MLP HPs
-LR = 1e-2 #   base 1e-2
-DEPTH = 3 #   base 3
-WIDTH = 1024 #base 1024
-GAMMA = 1 #   base 1
-NS=np.array([1024]) # base 1024
+def parse_args():
+    p = argparse.ArgumentParser(description="Config for MLP training")
+    p.add_argument("--ONLINE", type=bool, default=True, help="Whether to use online training (full dataset at once) or fixed dataset.")
+    p.add_argument("--N_TRAIN", type=int_from_any, default=4000, help="Number of training samples.")
+    p.add_argument("--N_TEST", type=int_from_any, default=10_000, help="Number of test samples.")
+    p.add_argument("--DATASET", type=str, default="synthetic", help="Dataset to use, currently: synthetic (gaussian) or cifar10.")
+    p.add_argument("--TARGET_FUNCTION_TYPE", type=str, default="monomial", help="Type of target function to learn.")
+    p.add_argument("--TARGET_MONOMIALS", type=json.loads, default=None, help="List of target monomials as JSON string.")
+    p.add_argument("--ONLYTHRESHOLDS", type=bool, default=True, help="If True, only record last loss instead of full curve.")
+    p.add_argument("--N_SAMPLES", nargs="+", type=int, default=[1024], help="Number of samples.")
+    # p.add_argument("--kerneltype", type=str, default="ReluNTK", help="Kernel type to use for synthetic data generation.")
+    p.add_argument("--NUM_TRIALS", type=int_from_any, default=1, help="Number of independent trials.")
+    
+    p.add_argument("--MAX_ITER", type=int_from_any, default=1e5, help="Steps per trial.")
+    p.add_argument("--LR", type=float, default=1e-2, help="Learning rate.")
+    p.add_argument("--DEPTH", type=int_from_any, default=3, help="Number of hidden layers+1.")
+    p.add_argument("--WIDTH", type=int_from_any, default=1024, help="Width of hidden layers.")
+    p.add_argument("--GAMMA", type=float, default=1.0, help="Richness parameter for training.")
+    p.add_argument("--DEVICES", type=int, nargs="+", default=[0], help="GPU ids, e.g. --DEVICES 2 4")
+    
+    p.add_argument("--SEED", type=int, default=42, help="RNG seed.")
+    p.add_argument("--LOSS_CHECKPOINTS", type=float, nargs="+", default=[0.15, 0.1], help="Loss checkpoints to record.")
+    p.add_argument("--EMA_SMOOTHER", type=float, default=0.9, help="EMA smoother for loss tracking.")
+    p.add_argument("--DETERMINSITIC", type=bool, default=True, help="Whether to use deterministic training.")
+    
+    p.add_argument("--EXPT_NAME", type=str, default="mlp-learning-curves", help="Where to save results.")
 
-# Training HPs
-ONLINE = True
-LOSS_CHECKPOINTS = (0.1, 1e-12) #needs a len atm
-MAX_ITER = int(1e20)
-EMA_SMOOTHER = 0.9
-DETERMINSITIC = True
-trial_counts = np.array([trial_count_fn(n) for n in NS], dtype=int)
-if ONLINE:
-    NS=np.array([1024])
-    trial_counts = np.ones_like(NS)*3
-    LOSS_CHECKPOINTS = (0.15, 0.1)
-
-global_config = dict(DEPTH=DEPTH, WIDTH=WIDTH, LR=LR, GAMMA=GAMMA,
-    EMA_SMOOTHER=EMA_SMOOTHER, MAX_ITER=MAX_ITER,
-    LOSS_CHECKPOINTS=LOSS_CHECKPOINTS, N_TEST=N_TEST,
-    SEED=SEED, ONLYTHRESHOLDS=ONLYTHRESHOLDS,
-)
-
-# Dataset HPs
-# Note: not all of these are used for all datasets
-datasethps = {"normalized": True,
-              "cutoff_mode": 40_000,
-              "d": 200,
-              "offset": 6,
-              "alpha": 2., #1.14~ is cifar
-              "noise_size": 1,
-              "yoffset": 1.2,
-              "beta": 1.2,
-              "classes": None,
-              "binarize": False,
-              "weight_variance": 1,
-              "bias_variance": 1,
-              }
-
-
+    # p.add_argument("--DATASETPATH", type=str, default=str(Path.home() / "data"), help="Path to dataset root.")
+    p.add_argument("--datasethps", type=json.loads,
+                    default='{"normalized": true, "cutoff_mode": 40000, "d": 200, "offset": 6, "alpha": 2.0, "noise_size": 1, "yoffset": 1.2, "beta": 1.2, "classes": null, "binarize": false, "weight_variance": 1, "bias_variance": 1}',
+                    help="Dataset hyperparameters as JSON string.")
+    p.add_argument("--datasethps_path", help="Path to datasethps .json")
+    p.add_argument("--target_monomials_path", help="Path to target monomials .json")
+    return p.parse_args()
 
 ## ----- Technicals below -----
 
-
+def load_json(path: str):
+    p = Path(path).expanduser()
+    if not p.exists():
+        raise FileNotFoundError(f"JSON file not found: {p}")
+    return json.loads(p.read_text())
 
 ## --- Multiprocessing setup ---
 
@@ -101,16 +96,16 @@ def run_job(device_id, job, global_config, bfn_config=None):
 
     torch.set_num_threads(1)  # avoid CPU contention when many procs
 
-    if TARGET_FUNCTION_TYPE == "monomial":
+    if global_config["TARGET_FUNCTION_TYPE"] == "monomial":
         from data import polynomial_batch_fn
         batch_function = lambda target_monomial, n, X, y: polynomial_batch_fn(**bfn_config, monomials=target_monomial, bsz=n, gen=GEN, X=X, y=y)
     target, n, trial = job
     X_te, y_te = batch_function(target, global_config["N_TEST"], X=None, y=None)(0)
-
-    X_tr, y_tr = batch_function(target, n, X=None, y=None)(trial) if not ONLINE else None, None
+    
+    X_tr, y_tr = batch_function(target, n, X=None, y=None)(trial) if not global_config["ONLINE"] else None, None
 
     bfn = batch_function(target, n, X=X_tr, y=y_tr)
-
+    
     model = MLP(d_in=global_config["DIM"], depth=global_config["DEPTH"],
                 d_out=1, width=global_config["WIDTH"]).to(device)
 
@@ -119,7 +114,7 @@ def run_job(device_id, job, global_config, bfn_config=None):
         batch_function=bfn,
         lr=global_config["LR"],
         max_iter=global_config["MAX_ITER"],
-        percent_thresholds=global_config["PERCENT_THRESHOLDS"],
+        loss_checkpoints=global_config["LOSS_CHECKPOINTS"],
         gamma=global_config["GAMMA"],
         ema_smoother=global_config["EMA_SMOOTHER"],
         only_thresholds=global_config["ONLYTHRESHOLDS"],
@@ -155,27 +150,42 @@ def worker(device_id, job_queue, result_queue, global_config, bfn_config):
 
 
 ## --- Multiprocessing execution ---
-def main():
+def main(args):
+    if args.TARGET_MONOMIALS is not None:
+        args.TARGET_MONOMIALS = [Monomial(m) for m in args.TARGET_MONOMIALS]
+    elif args.target_monomials_path:
+        target_monomials_json = load_json(args.target_monomials_path)
+        args.TARGET_MONOMIALS = [Monomial(m) for m in target_monomials_json]
+    elif args.TARGET_MONOMIALS is None:
+        args.TARGET_MONOMIALS = [Monomial({10: 1}), Monomial({190:1}), Monomial({0:2}), Monomial({2:1, 3:1}), Monomial({15:1, 20:1}), Monomial({0:3}),]
+    
+    
+    if args.datasethps_path:
+        args.datasethps = load_json(args.datasethps_path)
+    
+    args.N_TOT = args.N_TEST+args.N_TRAIN
+    cfg = vars(args)
+
     ## --- Grab targets and such ---
-    if DATASET == "synthetic":
+    if args.DATASET == "synthetic":
         from notebook_fns import get_synthetic_dataset
 
-        X_full, _, H, monomials, fra_eigvals, _, data_eigvals = get_synthetic_dataset(**datasethps, N=N_TOT, kerneltype=kerneltype,
-                                                                                           gen=torch.Generator(device='cuda').manual_seed(SEED))
+        X_full, _, H, monomials, fra_eigvals, _, data_eigvals = get_synthetic_dataset(**args.datasethps, N=args.N_TOT, kerneltype=ReluNTK,
+                                                                                           gen=torch.Generator(device='cuda').manual_seed(args.SEED))
 
-    elif DATASET == "cifar10":
+    elif args.DATASET == "cifar10":
         from imdata import ImageData
-        PIXEL_NORMALIZED =  False
-        classes = datasethps['classes']
-        normalized = datasethps['normalized']
+        PIXEL_NORMALIZED =  False # Don't normalize pixels, normalize samples
+        classes = args.datasethps['classes']
+        normalized = args.datasethps['normalized']
 
         if classes is not None:
             imdata = ImageData('cifar10', "../data", classes=classes, onehot=len(classes)!=2, format="N")
         else:
             imdata = ImageData('cifar10', "../data", classes=classes, onehot=False, format="N")
-        X_train, y_train = imdata.get_dataset(N_TRAIN, **datasethps, get='train',
+        X_train, y_train = imdata.get_dataset(args.N_TRAIN, **args.datasethps, get='train',
                                             centered=True, normalize=PIXEL_NORMALIZED)
-        X_test, y_test = imdata.get_dataset(N_TEST, **datasethps, get='test',
+        X_test, y_test = imdata.get_dataset(args.N_TEST, **args.datasethps, get='test',
                                             centered=True, normalize=PIXEL_NORMALIZED)
         X_train, y_train, X_test, y_test = map(ensure_torch, (X_train, y_train, X_test, y_test))
         y_train = y_train.squeeze()
@@ -194,14 +204,18 @@ def main():
     dim = X_full.shape[1]
 
     ## --- Target function defs ---
-    if TARGET_FUNCTION_TYPE == "monomial":
-        target_monomials = [Monomial({10: 1}), Monomial({190:1}), Monomial({0:2}), Monomial({2:1, 3:1}), Monomial({15:1, 20:1}), Monomial({0:3}),] #Monomial({1:1, 3:1, 4:1})]
-        if ONLINE:
-            target_monomials = monomials[:1000]
+    if args.TARGET_FUNCTION_TYPE == "monomial":
+        target_monomials = args.TARGET_MONOMIALS
         targets = target_monomials
-        bfn_config = dict(lambdas=lambdas, Vt=Vt, data_eigvals=data_eigvals, N=N_TOT)
+        bfn_config = dict(lambdas=lambdas, Vt=Vt, data_eigvals=data_eigvals, N=args.N_TOT)
     
-    global_config.update(dict(DIM=dim))
+    global_config = dict(DEPTH=args.DEPTH, WIDTH=args.WIDTH, LR=args.LR, GAMMA=args.GAMMA,
+        EMA_SMOOTHER=args.EMA_SMOOTHER, MAX_ITER=args.MAX_ITER,
+        LOSS_CHECKPOINTS=args.LOSS_CHECKPOINTS, N_TEST=args.N_TEST,
+        SEED=args.SEED, ONLYTHRESHOLDS=args.ONLYTHRESHOLDS, DIM=dim,
+        TARGET_FUNCTION_TYPE=args.TARGET_FUNCTION_TYPE,
+        ONLINE=args.ONLINE,
+        )
 
     var_axes = ["target", "ntrain", "trial"]
     et_losses = ExptTrace(var_axes)
@@ -209,8 +223,8 @@ def main():
 
     jobs = [(target, n, trial)
             for target in targets
-            for nidx, n in enumerate(NS)
-            for trial in range(int(trial_counts[nidx]))]
+            for n in args.N_SAMPLES
+            for trial in range(args.NUM_TRIALS)]
 
     ctx = get_context("spawn")
 
@@ -236,7 +250,7 @@ def main():
                 n, tstr, trial, train_losses, test_losses, timekeys = payload
                 et_losses[tstr, n, trial] = test_losses
                 et_timekeys[tstr, n, trial] = timekeys
-                if not(ONLYTHRESHOLDS):
+                if not(args.ONLYTHRESHOLDS):
                     train_losses = train_losses[-1]
                     test_losses = test_losses[-1]
                 pbar.set_postfix_str(
@@ -263,7 +277,7 @@ def main():
     torch.cuda.empty_cache()
 
 if __name__ == "__main__":
-
+    args = parse_args()
     ## --- Setup file management ---
 
     datapath = os.getenv("DATASETPATH")
@@ -272,18 +286,17 @@ if __name__ == "__main__":
         raise ValueError("must set $DATASETPATH environment variable")
     if exptpath is None:
         raise ValueError("must set $EXPTPATH environment variable")
-    fp = f"MLPtraining-gamma:{GAMMA}-target:{TARGET_FUNCTION_TYPE}"
-    expt_dir = os.path.join(exptpath, "phlab", EXPT_NAME, DATASET, fp)
+    expt_dir = os.path.join(exptpath, "phlab", args.EXPT_NAME, args.DATASET)
 
     if not os.path.exists(expt_dir):
         os.makedirs(expt_dir)
     expt_fm = FileManager(expt_dir)
     print(f"Working in directory {expt_dir}.")
-    hypers = dict(expt_name=EXPT_NAME, dataset=DATASET, target_function_type=TARGET_FUNCTION_TYPE,
-                width=WIDTH, depth=DEPTH, gamma=GAMMA, lr=LR, seed=SEED, n_tot=N_TOT, n_test=N_TEST)
+    hypers = dict(expt_name=args.EXPT_NAME, dataset=args.DATASET, target_function_type=args.TARGET_FUNCTION_TYPE,
+                width=args.WIDTH, depth=args.DEPTH, gamma=args.GAMMA, lr=args.LR, seed=args.SEED, n_train=args.N_TRAIN, n_test=args.N_TEST)
     with open(expt_fm.get_filename("hypers.json"), 'w') as f:
         json.dump(hypers, f, indent=4)
 
     ## --- Begin experiment ---
     mp.set_start_method("spawn", force=True)
-    main()
+    main(args)
